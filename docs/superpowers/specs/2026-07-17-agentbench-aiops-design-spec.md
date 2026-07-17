@@ -100,17 +100,19 @@ class SimulationClock:
 * **加权拓扑图 (Topology Graph)**: 显式区分调用的分支语义：
   * **Fan-out (并行扇出)**: 同时调用所有依赖（如 Gateway 并行调用 OrderService 和 UserService），各边权重为流量分流比。
   * **Route (路由选择)**: 根据权重进行加权随机游走，单次 Request 只走被选中的那条物理路径。
-  ```python
-  topology = {
-      "Gateway": {
-          "type": "fan_out",
-          "dependencies": {"OrderService": 1.0, "UserService": 1.0}
-      },
-      "OrderService": {
-          "type": "route",
-          "dependencies": {"PaymentService": 0.8, "InventoryService": 0.2}
-      }
-  }
+  ```yaml
+  # default_env.yaml 示例
+  topology:
+    Gateway:
+      type: "fan_out"
+      dependencies:
+        OrderService: 1.0
+        UserService: 1.0
+    OrderService:
+      type: "route"
+      dependencies:
+        PaymentService: 0.8
+        InventoryService: 0.2
   ```
 
 ### 2.3 状态演进管道 (State Evolution Pipeline)
@@ -223,11 +225,18 @@ name: complex_cascade_failure
 description: 流量激增与 Redis 连接池泄漏组合的级联故障
 include:
   - scenarios/traffic_spike.yaml
-  - scenarios/redis_pool_leak.yaml
 steps:
   - tick: 15
     target: "Node-1.resources.disk_util"
     value: 0.96
+  - tick: 15
+    event:
+      entity_id: "Node-1"
+      severity: "CRITICAL"
+      event_type: "ResourceExhausted"
+      payload:
+        session_id: "{session_id}"
+        msg: "Disk utility threshold exceeded (96%)"
 ```
 
 ---
