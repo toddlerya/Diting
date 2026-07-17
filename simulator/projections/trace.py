@@ -11,7 +11,7 @@ class TraceProjection(BaseProjection):
     并在查询时调用 TimeAligner 将其对齐转换至现实物理 Now 时间。
     """
     def __init__(self, bus: EventBus, clock: SimulationClock):
-        super().__init__(bus)
+        super().__init__(bus, clock)
         self.clock = clock
         self.aligner = TimeAligner(clock)
         # 内存 Trace 数据库：session_id -> list of traces

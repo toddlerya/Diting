@@ -1,10 +1,20 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import FastAPI, Query
 from typing import Optional
 from simulator.projections.metric import MetricProjection
 from simulator.projections.log import LogProjection
 from simulator.projections.trace import TraceProjection
 from simulator.projections.alert import AlertmanagerProjection
+
+def _parse_real_now(real_now: Optional[str]) -> datetime:
+    """
+    辅助解析 real_now 参数。
+    由于 URL 传输中 '+' 常被解码为空格，此处做容错纠偏处理。
+    """
+    if real_now:
+        real_now = real_now.replace(" ", "+")
+        return datetime.fromisoformat(real_now)
+    return datetime.now(timezone.utc)
 
 def create_app(metric_proj: MetricProjection, 
                log_proj: LogProjection, 
@@ -14,25 +24,30 @@ def create_app(metric_proj: MetricProjection,
     app = FastAPI(title="Diting In-Memory State HTTP Server")
     
     @app.get("/api/v1/metrics")
-    def get_metrics(session_id: str, metric: str, start_tick: int = 0, end_tick: int = 100):
-        return metric_proj.query_metric(session_id, metric, start_tick, end_tick)
+    def get_metrics(session_id: str, metric: str, start_tick: int = 0, end_tick: int = 100, real_now: Optional[str] = None):
+        t_now = _parse_real_now(real_now)
+        return metric_proj.query_metric(session_id, metric, start_tick, end_tick, t_now)
         
     @app.get("/api/v1/logs")
-    def get_logs(session_id: str, service: str, level: str = "ERROR"):
-        return log_proj.query_logs(session_id, service, level)
+    def get_logs(session_id: str, service: str, level: str = "ERROR", real_now: Optional[str] = None):
+        t_now = _parse_real_now(real_now)
+        return log_proj.query_logs(session_id, service, level, t_now)
         
     @app.get("/api/v1/traces")
     def get_traces(session_id: str, real_now: Optional[str] = None):
-        t_now = datetime.fromisoformat(real_now) if real_now else datetime.now()
+        t_now = _parse_real_now(real_now)
         return trace_proj.query_traces(session_id, t_now)
         
     @app.get("/api/v1/alerts")
-    def get_alerts(session_id: str, status: str = "firing"):
+    def get_alerts(session_id: str, status: str = "firing", real_now: Optional[str] = None):
+        t_now = _parse_real_now(real_now)
         if status == "firing":
-            return alert_proj.get_firing_alerts(session_id)
+            return alert_proj.get_firing_alerts(session_id, t_now)
         elif status == "resolved":
-            return alert_proj.get_resolved_alerts(session_id)
+            return alert_proj.get_resolved_alerts(session_id, t_now)
         return []
+
+
         
     @app.delete("/api/v1/session")
     def delete_session(session_id: str):

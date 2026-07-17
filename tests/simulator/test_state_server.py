@@ -13,10 +13,10 @@ def test_state_server_endpoints():
     bus = EventBus()
     clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
     
-    metric_proj = MetricProjection(bus)
-    log_proj = LogProjection(bus)
+    metric_proj = MetricProjection(bus, clock)
+    log_proj = LogProjection(bus, clock)
     trace_proj = TraceProjection(bus, clock)
-    alert_proj = AlertmanagerProjection(bus)
+    alert_proj = AlertmanagerProjection(bus, clock)
     
     # 注入测试数据
     metric_proj.record_metric("sess_web", "cpu_usage", 5, 45.2)
@@ -50,29 +50,34 @@ def test_state_server_endpoints():
     app = create_app(metric_proj, log_proj, trace_proj, alert_proj)
     client = TestClient(app)
     
+    real_now_str = "2026-07-17T14:00:00+00:00"
+    
     # 1. 测 Metric API
-    resp = client.get("/api/v1/metrics?session_id=sess_web&metric=cpu_usage&start_tick=0&end_tick=10")
+    resp = client.get(f"/api/v1/metrics?session_id=sess_web&metric=cpu_usage&start_tick=0&end_tick=10&real_now={real_now_str}")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
     assert resp.json()[0]["value"] == 45.2
+    assert "timestamp" in resp.json()[0]
     
-    # 2. 测 Log API
-    resp = client.get("/api/v1/logs?session_id=sess_web&service=OrderService&level=CRITICAL")
+    # 2. 测 Log API (过滤 level=CRITICAL 时能拿到，过滤 WARNING 时为噪点测试)
+    resp = client.get(f"/api/v1/logs?session_id=sess_web&service=OrderService&level=CRITICAL&real_now={real_now_str}")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
     assert "DB fail" in resp.json()[0]
+    assert "2026-07-17T14:00:00" in resp.json()[0]
     
     # 3. 测 Alert API
-    resp = client.get("/api/v1/alerts?session_id=sess_web&status=firing")
+    resp = client.get(f"/api/v1/alerts?session_id=sess_web&status=firing&real_now={real_now_str}")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
     assert resp.json()[0]["labels"]["alertname"] == "GatewayHighLatency"
+    assert resp.json()[0]["startsAt"] is not None
     
-    # 4. 测 DELETE API (零 I/O 内存清空)
+    # 4. 测 DELETE API
     del_resp = client.delete("/api/v1/session?session_id=sess_web")
     assert del_resp.status_code == 200
     assert del_resp.json()["status"] == "cleared"
     
     # 验证清空后查不到
-    assert len(metric_proj.query_metric("sess_web", "cpu_usage", 0, 10)) == 0
-    assert len(alert_proj.get_firing_alerts("sess_web")) == 0
+    assert len(metric_proj.query_metric("sess_web", "cpu_usage", 0, 10, datetime.now(timezone.utc))) == 0
+    assert len(alert_proj.get_firing_alerts("sess_web", datetime.now(timezone.utc))) == 0
