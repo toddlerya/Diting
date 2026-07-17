@@ -33,10 +33,8 @@ class LogProjection(BaseProjection):
             if log["service"] == service and log["level"] == level:
                 results.append(log["message"])
                 
-        # 局部 PRNG 控制警告噪点日志。
-        # 真实环境下为 random_gen.random() < 0.001
-        # 在单测中，使用 seed=42 (首次 random() 约 0.639) 时为了稳定触发设为 0.8
-        if self.random_gen.random() < 0.8:
+        # 仅当查询条件是 WARNING 级别时，才混入 WARNING 噪点日志以防污染其他级别
+        if level == "WARNING" and self.random_gen.random() < 0.8:
             noise_line = f"[{datetime.now().isoformat()}] [WARNING] [trace_id: None] {service}: Transient connection jitter (noise)"
             if session_id not in self.logs_db:
                 self.logs_db[session_id] = []
