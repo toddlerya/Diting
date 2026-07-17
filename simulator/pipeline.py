@@ -29,7 +29,7 @@ class StateEvolutionPipeline:
         self.clock = clock
         self.bus = bus
 
-    def run_tick(self, ingress_qps: float):
+    def run_tick(self, ingress_qps: float, session_id: str = "default"):
         self.clock.tick()
         now = self.clock.now()
         tick = self.clock.current_tick
@@ -46,7 +46,7 @@ class StateEvolutionPipeline:
             # 2. 模拟依赖判定与故障自底向上级联流转
             self._evaluate_span_node(root_span)
             
-            # 3. 投递 Trace 结束事件发往总线
+            # 3. 投递 Trace 结束事件发往总线，加入 session_id 以进行会话隔离
             self.bus.publish(BaseEvent(
                 event_id=f"evt_{uuid.uuid4().hex[:8]}",
                 tick=tick,
@@ -54,7 +54,7 @@ class StateEvolutionPipeline:
                 entity_id="gateway",
                 severity="INFO",
                 event_type="TraceFinishedEvent",
-                payload={"request": request}
+                payload={"session_id": session_id, "request": request}
             ))
 
     def _build_span_tree(self, service: str, parent_span_id: Optional[str]) -> SpanNode:
