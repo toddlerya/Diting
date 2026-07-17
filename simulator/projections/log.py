@@ -11,10 +11,11 @@ class LogProjection(BaseProjection):
     订阅事件总线中的物理资源耗尽或系统异常事件，并将其加工渲染为带 trace_id 上下文的标准 Loki 格式日志。
     此外，支持使用局部 PRNG 局部隔离加噪声，以测试 Agent 的信息筛选与排噪能力。
     """
-    def __init__(self, bus: EventBus, clock: SimulationClock, seed: int = 42):
+    def __init__(self, bus: EventBus, clock: SimulationClock, seed: int = 42, noise_rate: float = 0.001):
         super().__init__(bus, clock)
         # 用剧本分配的随机种子实例化 PRNG，防止多轮评测间干扰，保持确定性
         self.random_gen = random.Random(seed)
+        self.noise_rate = noise_rate
         # 内存日志数据库：session_id -> list of log dicts
         self.logs_db: Dict[str, List[dict]] = {}
         # 订阅资源状态异常事件以渲染日志
@@ -52,7 +53,7 @@ class LogProjection(BaseProjection):
                 
         # 仅当查询条件是 WARNING 级别时，才混入 WARNING 噪点日志以防污染其他级别。
         # 实时噪点的日志时间也使用 real_now 动态对齐。
-        if level == "WARNING" and self.random_gen.random() < 0.8:
+        if level == "WARNING" and self.random_gen.random() < self.noise_rate:
             noise_time = real_now  # 直接绑定为物理实时 Now 或者是指定偏移时间
             noise_line = f"[{noise_time.isoformat()}] [WARNING] [trace_id: None] {service}: Transient connection jitter (noise)"
             if session_id not in self.logs_db:
@@ -60,5 +61,6 @@ class LogProjection(BaseProjection):
             results.append(noise_line)
             
         return results
+
 
 

@@ -12,8 +12,6 @@ class TraceProjection(BaseProjection):
     """
     def __init__(self, bus: EventBus, clock: SimulationClock):
         super().__init__(bus, clock)
-        self.clock = clock
-        self.aligner = TimeAligner(clock)
         # 内存 Trace 数据库：session_id -> list of traces
         self.traces_db: Dict[str, List[dict]] = {}
         # 订阅已完成的请求 Trace 事件

@@ -24,14 +24,14 @@ def main():
 
     # 1. 初始化时钟与事件总线
     start_time = datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc)
-    clock = SimulationClock(start_time, timedelta(milliseconds=100))
+    clock = SimulationClock(start_time, timedelta(milliseconds=1000))
     bus = EventBus()
 
     # 2. 初始化投影层
-    metric_proj = MetricProjection(bus)
-    log_proj = LogProjection(bus, seed=100) # 固定噪点种子以便稳定观测
+    metric_proj = MetricProjection(bus, clock)
+    log_proj = LogProjection(bus, clock, seed=100, noise_rate=0.8) # 固定噪点种子并高配噪声以供 Demo 稳定输出
     trace_proj = TraceProjection(bus, clock)
-    alert_proj = AlertmanagerProjection(bus)
+    alert_proj = AlertmanagerProjection(bus, clock)
 
     # 3. 初始化拓扑服务实体 (Gateway -> Order -> Payment)
     gateway = ServiceEntity("gateway", "Gateway", seed=1)
@@ -103,11 +103,19 @@ def main():
 
     # 循环演进 10 个 tick
     for t in range(1, 11):
-        # 模拟在不同 Tick 注入与消解故障
+        # 1. 推演前：注入或释放物理资源状态
         if t == 4:
             print(f"\n\033[1;31m[Tick {t}] >>> 注入故障：Redis 物理连接池满 (50/50) <<< \033[0m")
             redis.resources["used"] = 50
-            # 抛出告警 firing 事件与异常日志事件
+        elif t == 8:
+            print(f"\n\033[1;32m[Tick {t}] >>> 故障自愈消解：释放 Redis 连接数 (5/50) <<< \033[0m")
+            redis.resources["used"] = 5
+            
+        # 2. 推演：运行 tick 演进（推进时钟）
+        pipeline.run_tick(ingress_qps=1.0, session_id="demo_session")
+        
+        # 3. 推演后：发布对齐当前 tick 与 clock.now() 的业务状态事件
+        if t == 4:
             trigger_log_event(t, "PaymentService", "CRITICAL", "Redis connection pool full", "tr_fail_1")
             bus.publish(BaseEvent(
                 event_id=f"evt_a_{t}",
@@ -124,9 +132,6 @@ def main():
                 }
             ))
         elif t == 8:
-            print(f"\n\033[1;32m[Tick {t}] >>> 故障自愈消解：释放 Redis 连接数 (5/50) <<< \033[0m")
-            redis.resources["used"] = 5
-            # 抛出告警消解 resolved 事件
             bus.publish(BaseEvent(
                 event_id=f"evt_a_r_{t}",
                 tick=t,
@@ -141,7 +146,6 @@ def main():
                 }
             ))
 
-        pipeline.run_tick(ingress_qps=1.0, session_id="demo_session")
         time.sleep(0.02) # 极快推演
 
     print("\033[1;32m推演完成！\033[0m\n")
@@ -172,8 +176,8 @@ def main():
 
     # B. 打印日志与白噪声
     print("\n\033[1;35m>>> 2. Loki 日志流 (故障日志 + 警告背景噪声) <<<\033[0m")
-    err_logs = log_proj.query_logs("demo_session", "PaymentService", "CRITICAL")
-    warn_logs = log_proj.query_logs("demo_session", "PaymentService", "WARNING")
+    err_logs = log_proj.query_logs("demo_session", "PaymentService", "CRITICAL", real_now)
+    warn_logs = log_proj.query_logs("demo_session", "PaymentService", "WARNING", real_now)
     print("CRITICAL 级故障日志:")
     for log in err_logs:
         print(f"  {log}")
@@ -184,7 +188,7 @@ def main():
     # C. 打印 Alertmanager 生命周期
     print("\n\033[1;35m>>> 3. Alertmanager 告警生命周期 (Firing & Resolved) <<<\033[0m")
     print("Resolved 告警列表 (历史):")
-    for a in alert_proj.get_resolved_alerts("demo_session"):
+    for a in alert_proj.get_resolved_alerts("demo_session", real_now):
         print(f"  Alertname: {a['labels']['alertname']} | Status: \033[32m{a['status']}\033[0m | startsAt: {a['startsAt']} | endsAt: {a['endsAt']}")
 
     # 6. 启动 API 服务

@@ -65,8 +65,8 @@ def test_log_projection_noise():
     bus = EventBus()
     now = datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc)
     clock = SimulationClock(now)
-    # 使用固定种子 seed = 42 实例化，使其偶发日志生成 100% 稳定可测试
-    log_proj = LogProjection(bus, clock, seed=42)
+    # 使用固定种子 seed = 42 实例化，且高配噪声率以便单测稳定测出
+    log_proj = LogProjection(bus, clock, seed=42, noise_rate=0.8)
     
     # 正常事件投递，以 session_id="sess_log" 注入
     bus.publish(BaseEvent(
