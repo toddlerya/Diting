@@ -37,7 +37,7 @@
   * `BaseEvent(...)`: 包含 `event_id`, `tick`, `timestamp`, `entity_id`, `severity`, `event_type`, `payload`, `trace_id`。
   * `EventBus()`: `publish(event: BaseEvent)`, `subscribe(event_type, callback)`。
 
-- [ ] **Step 1: 编写失败的测试**
+- [x] **Step 1: 编写失败的测试**
   
   在 `tests/simulator/test_clock_event.py` 中编写测试：
   ```python
@@ -63,12 +63,12 @@
       assert aligner.align_timestamp(1, real_now) == real_now - timedelta(milliseconds=100)
   ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
   
   Run: `pytest tests/simulator/test_clock_event.py -v`
   Expected: FAIL (ImportError)
 
-- [ ] **Step 3: 编写最小实现代码**
+- [x] **Step 3: 编写最小实现代码**
   
   在 `simulator/clock.py` 中实现时钟与对齐算法：
   ```python
@@ -98,12 +98,12 @@
   
   在 `simulator/event_bus.py` 中实现 BaseEvent 与 EventBus。
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
   
   Run: `pytest tests/simulator/test_clock_event.py -v`
   Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
   
   ```bash
   git add simulator/clock.py simulator/event_bus.py tests/simulator/test_clock_event.py
@@ -125,7 +125,7 @@
   * `ServiceEntity(entity_id: str, name: str, seed: int)`: 物理上限行为判断（Worker Thread 503, Connection wait timeout, OOM）。计算 derived metrics 时加入 `self.random_gen` 的 $\pm 2\%$ 白噪声。
   * `Topology`: 支持在 dependency 边定义 `type` ("fan_out" 或 "route") 与 `weight`。
 
-- [ ] **Step 1: 编写失败的测试**
+- [x] **Step 1: 编写失败的测试**
   
   在 `tests/simulator/test_entity_topology.py` 中编写测试：
   ```python
@@ -160,24 +160,24 @@
       assert srv1.derived_metrics()["cpu_usage"] == srv2.derived_metrics()["cpu_usage"]
   ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
   
   Run: `pytest tests/simulator/test_entity_topology.py -v`
   Expected: FAIL
 
-- [ ] **Step 3: 编写最小实现代码**
+- [x] **Step 3: 编写最小实现代码**
   
   在 `simulator/entity.py` 中实现：
   * 使用 `random.Random(seed)` 初始化 Entity 内部 PRNG。
   * `ServiceEntity.derived_metrics()` 中将 `self.random_gen.uniform(-2.0, 2.0)` 加入 CPU 计算。
   * 实现 `Topology` 管理 `nodes` 字典（包括节点调用语义类型）与 `dependencies` 边。
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
   
   Run: `pytest tests/simulator/test_entity_topology.py -v`
   Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
   
   ```bash
   git add simulator/entity.py tests/simulator/test_entity_topology.py
@@ -199,7 +199,7 @@
   * `Request(trace_id: str, root_span: SpanNode)`
   * `StateEvolutionPipeline`: 在 `run_tick` 中，第一阶段生成 Request 并按照拓扑语义（随机游走或扇出并发）生成 SpanNode 树骨架。在 `Update Dependency` 阶段，流经故障节点时更新 Span 状态为 ERROR/TIMEOUT。根据服务的重试策略在当前 SpanNode 节点下生成同层的重试 Span。
 
-- [ ] **Step 1: 编写失败的测试**
+- [x] **Step 1: 编写失败的测试**
   
   在 `tests/simulator/test_pipeline.py` 中：
   ```python
@@ -237,12 +237,12 @@
       # 我们通过订阅事件总线验证生成的 SpanNode 树结构中包含了 Payment 的 TIMEOUT 状态以及重试节点。
   ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
   
   Run: `pytest tests/simulator/test_pipeline.py -v`
   Expected: FAIL
 
-- [ ] **Step 3: 编写最小实现代码**
+- [x] **Step 3: 编写最小实现代码**
   
   在 `simulator/pipeline.py` 中实现：
   * `SpanNode` 数据类与其序列化结构。
@@ -253,12 +253,12 @@
     4. 若有 `retry_policy`，在其 `children` 中生成同层 sibling `SpanNode`（标记 retry_count 递增），再次模拟下游调用直到成功或达到 max_attempts。
     5. 结束后，打包整个 `Request` 为 `TraceFinishedEvent` 发布至事件总线。
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
   
   Run: `pytest tests/simulator/test_pipeline.py -v`
   Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
   
   ```bash
   git add simulator/pipeline.py tests/simulator/test_pipeline.py
@@ -281,7 +281,7 @@
   * `TraceProjection`: 缓存 `TraceFinishedEvent` 并支持自底向上时间对齐映射组装。
   * `AlertmanagerProjection`: 评估告警状态机（Firing -> Resolved）。
 
-- [ ] **Step 1: 编写失败的测试**
+- [x] **Step 1: 编写失败的测试**
   
   在 `tests/simulator/test_projections.py` 中：
   ```python
@@ -314,24 +314,24 @@
       assert resolved[0]["endsAt"] is not None # 拥有消解截止时间戳
   ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
   
   Run: `pytest tests/simulator/test_projections.py -v`
   Expected: FAIL
 
-- [ ] **Step 3: 编写最小实现代码**
+- [x] **Step 3: 编写最小实现代码**
   
   在 `simulator/projections/alert.py` 等文件中实现：
   * `AlertmanagerProjection` 订阅 `MetricThresholdExceeded`（创建 firing alert，startsAt=aligned_time）与 `MetricThresholdRecovered`（标记 resolved alert，endsAt=aligned_time，并从 firing 队列移入 resolved 队列）。
   * 实现 `LogProjection` 偶发随机 WARN 噪声混入。
   * 实现 `TraceProjection` 链路组装。
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
   
   Run: `pytest tests/simulator/test_projections.py -v`
   Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
   
   ```bash
   git add simulator/projections/ tests/simulator/test_projections.py
@@ -356,7 +356,7 @@
     * `GET /api/v1/alerts?session_id=...&status=firing/resolved`
     * `DELETE /api/v1/session?session_id=...` (清空内存)
 
-- [ ] **Step 1: 编写失败的测试**
+- [x] **Step 1: 编写失败的测试**
   
   在 `tests/simulator/test_state_server.py` 中：
   ```python
@@ -374,21 +374,21 @@
       assert response.json()["status"] == "cleared"
   ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
   
   Run: `pytest tests/simulator/test_state_server.py -v`
   Expected: FAIL
 
-- [ ] **Step 3: 编写最小实现代码**
+- [x] **Step 3: 编写最小实现代码**
   
   在 `simulator/state_server.py` 中，使用 FastAPI 快速搭建轻量级 Web APP，暴露出对 Projection 只读查询接口与 DELETE 内存清空逻辑。
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
   
   Run: `pytest tests/simulator/test_state_server.py -v`
   Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
   
   ```bash
   git add simulator/state_server.py tests/simulator/test_state_server.py
