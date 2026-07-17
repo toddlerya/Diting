@@ -1,0 +1,59 @@
+# 声明式系统拓扑与默认基础资源水位
+
+topology:
+  gateway:
+    type: "fan_out"
+    dependencies:
+      order: 1.0
+  order:
+    type: "route"
+    dependencies:
+      payment: 1.0
+  payment:
+    type: "route"
+    dependencies:
+      redis: 1.0
+
+entities:
+  gateway:
+    class: "ServiceEntity"
+    name: "Gateway"
+    seed: 1
+    resources:
+      active_workers: 2
+      max_workers: 10
+      heap_used_mb: 128
+      max_heap_mb: 512
+      request_queue_len: 0
+
+  order:
+    class: "ServiceEntity"
+    name: "OrderService"
+    seed: 2
+    resources:
+      active_workers: 2
+      max_workers: 10
+      heap_used_mb: 128
+      max_heap_mb: 512
+      request_queue_len: 0
+      retry_policy:
+        max_attempts: 2
+
+  payment:
+    class: "ServiceEntity"
+    name: "PaymentService"
+    seed: 3
+    resources:
+      active_workers: 2
+      max_workers: 10
+      heap_used_mb: 128
+      max_heap_mb: 512
+      request_queue_len: 0
+
+  redis:
+    class: "InfraEntity"
+    name: "RedisPool"
+    seed: 4
+    resources:
+      used: 5
+      capacity: 50

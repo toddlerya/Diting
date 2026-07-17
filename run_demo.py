@@ -1,16 +1,18 @@
 import uvicorn
 import time
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Dict
 from simulator.clock import SimulationClock
 from simulator.event_bus import EventBus, BaseEvent
-from simulator.entity import ServiceEntity, InfraEntity, Topology
+from simulator.environment import load_environment
 from simulator.pipeline import StateEvolutionPipeline
 from simulator.projections.metric import MetricProjection
 from simulator.projections.log import LogProjection
 from simulator.projections.trace import TraceProjection
 from simulator.projections.alert import AlertmanagerProjection
 from simulator.state_server import create_app
+from simulator.scenario import Scenario
 
 def print_ascii_art():
     print("""
@@ -33,118 +35,52 @@ def main():
     trace_proj = TraceProjection(bus, clock)
     alert_proj = AlertmanagerProjection(bus, clock)
 
-    # 3. 初始化拓扑服务实体 (Gateway -> Order -> Payment)
-    gateway = ServiceEntity("gateway", "Gateway", seed=1)
-    order = ServiceEntity("order", "OrderService", seed=2)
-    payment = ServiceEntity("payment", "PaymentService", seed=3)
-    redis = InfraEntity("redis", "RedisPool", seed=4)
-
-    entities = {
-        "gateway": gateway,
-        "order": order,
-        "payment": payment,
-        "redis": redis
-    }
-
-    topo = Topology()
-    topo.add_node("gateway", "fan_out")
-    topo.add_dependency("gateway", "order", 1.0)
-
-    topo.add_node("order", "route")
-    topo.add_dependency("order", "payment", 1.0)
-
-    topo.add_node("payment", "route")
-    topo.add_dependency("payment", "redis", 1.0)
-
-    # 配置各节点基础资源
-    for service in [gateway, order, payment]:
-        service.resources["active_workers"] = 2
-        service.resources["max_workers"] = 10
-        service.resources["heap_used_mb"] = 128
-        service.resources["max_heap_mb"] = 512
-        service.resources["request_queue_len"] = 0
-
-    redis.resources["used"] = 5
-    redis.resources["capacity"] = 50
-
-    # 为 Order 配置重试策略
-    order.resources["retry_policy"] = {"max_attempts": 2}
+    # 3. 从 YAML 动态加载声明式测试环境拓扑与服务实体
+    current_dir = Path(__file__).resolve().parent
+    env_path = current_dir / "simulator" / "environments" / "default_env.yaml"
+    entities, topo = load_environment(str(env_path))
 
     # 订阅 Finished Trace 以同步录入 metrics 投影
     def sync_projections(event):
         req = event.payload["request"]
         session_id = event.payload.get("session_id", "demo_session")
-        # 记录各服务的衍生 CPU 和 Latency
+        # 记录各组件的派生指标
         for s_id, entity in entities.items():
             metrics = entity.derived_metrics()
             if metrics:
-                metric_proj.record_metric(session_id, f"{s_id}_cpu_usage", event.tick, metrics.get("cpu_usage", 0))
-                metric_proj.record_metric(session_id, f"{s_id}_latency", event.tick, metrics.get("latency", 0))
+                # 记录微服务指标 (CPU / Latency)
+                if "cpu_usage" in metrics:
+                    metric_proj.record_metric(session_id, f"{s_id}_cpu_usage", event.tick, metrics["cpu_usage"])
+                if "latency" in metrics:
+                    metric_proj.record_metric(session_id, f"{s_id}_latency", event.tick, metrics["latency"])
+                # 记录基础设施指标 (Utilization)
+                if "utilization" in metrics:
+                    metric_proj.record_metric(session_id, f"{s_id}_utilization", event.tick, metrics["utilization"])
 
     bus.subscribe("TraceFinishedEvent", sync_projections)
 
-    # 4. 创建演进流水线
+    # 4. 创建演进流水线并加载剧本
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
+
+    current_dir = Path(__file__).resolve().parent
+    scenario_path = current_dir / "simulator" / "scenarios" / "redis_exhaust.yaml"
+    scenario = Scenario.from_yaml(str(scenario_path))
 
     print("\033[1;33m[1/3] 开始运行仿真引擎推演 (10 Ticks)... \033[0m")
 
-    # 为了触发 log_proj 的错误日志订阅，我们定义一个包装逻辑
-    def trigger_log_event(tick, service_id, severity, msg, trace_id):
-        bus.publish(BaseEvent(
-            event_id=f"evt_l_{tick}",
-            tick=tick,
-            timestamp=clock.now(),
-            entity_id=service_id,
-            severity=severity,
-            event_type="ResourceExhausted",
-            payload={"session_id": "demo_session", "msg": msg},
-            trace_id=trace_id
-        ))
-
     # 循环演进 10 个 tick
     for t in range(1, 11):
-        # 1. 推演前：注入或释放物理资源状态
+        # 1. 打印控制台故障提示
         if t == 4:
             print(f"\n\033[1;31m[Tick {t}] >>> 注入故障：Redis 物理连接池满 (50/50) <<< \033[0m")
-            redis.resources["used"] = 50
         elif t == 8:
             print(f"\n\033[1;32m[Tick {t}] >>> 故障自愈消解：释放 Redis 连接数 (5/50) <<< \033[0m")
-            redis.resources["used"] = 5
-            
-        # 2. 推演：运行 tick 演进（推进时钟）
+
+        # 2. 应用 YAML 剧本配置的状态变更和故障注入
+        scenario.apply(t, entities, bus, clock, session_id="demo_session")
+
+        # 3. 推演：运行 tick 演进（推进时钟）
         pipeline.run_tick(ingress_qps=1.0, session_id="demo_session")
-        
-        # 3. 推演后：发布对齐当前 tick 与 clock.now() 的业务状态事件
-        if t == 4:
-            trigger_log_event(t, "PaymentService", "CRITICAL", "Redis connection pool full", "tr_fail_1")
-            bus.publish(BaseEvent(
-                event_id=f"evt_a_{t}",
-                tick=t,
-                timestamp=clock.now(),
-                entity_id="PaymentService",
-                severity="CRITICAL",
-                event_type="MetricThresholdExceeded",
-                payload={
-                    "session_id": "demo_session",
-                    "alertname": "RedisConnectionExhausted",
-                    "summary": "Redis connections exhausted (50/50)",
-                    "service": "PaymentService"
-                }
-            ))
-        elif t == 8:
-            bus.publish(BaseEvent(
-                event_id=f"evt_a_r_{t}",
-                tick=t,
-                timestamp=clock.now(),
-                entity_id="PaymentService",
-                severity="INFO",
-                event_type="MetricThresholdRecovered",
-                payload={
-                    "session_id": "demo_session",
-                    "alertname": "RedisConnectionExhausted",
-                    "service": "PaymentService"
-                }
-            ))
 
         time.sleep(0.02) # 极快推演
 
@@ -216,7 +152,8 @@ def main():
 
     print(f"\n\033[1;33m[3/3] 启动 In-Memory State HTTP Server API (Port: {port}) ... \033[0m")
     print("服务运行后，可通过如下接口进行多会话隔离查询：")
-    print(f"  * Metrics 查询: http://127.0.0.1:{port}/api/v1/metrics?session_id=demo_session&metric=gateway_cpu_usage")
+    print(f"  * Metrics 查询 (CPU): http://127.0.0.1:{port}/api/v1/metrics?session_id=demo_session&metric=gateway_cpu_usage")
+    print(f"  * Metrics 查询 (Redis): http://127.0.0.1:{port}/api/v1/metrics?session_id=demo_session&metric=redis_utilization")
     print(f"  * Logs 查询: http://127.0.0.1:{port}/api/v1/logs?session_id=demo_session&service=PaymentService&level=CRITICAL")
     print(f"  * Traces 查询: http://127.0.0.1:{port}/api/v1/traces?session_id=demo_session")
     print(f"  * Alerts 状态: http://127.0.0.1:{port}/api/v1/alerts?session_id=demo_session&status=resolved")

@@ -1,0 +1,38 @@
+name: redis_exhaust
+description: Redis connection pool exhausted simulation scenario
+seed: 100
+steps:
+  - tick: 4
+    target: "redis.resources.used"
+    value: 50
+  - tick: 4
+    event:
+      entity_id: "PaymentService"
+      severity: "CRITICAL"
+      event_type: "ResourceExhausted"
+      payload:
+        session_id: "{session_id}"
+        msg: "Redis connection pool full"
+      trace_id: "tr_fail_1"
+  - tick: 4
+    event:
+      entity_id: "PaymentService"
+      severity: "CRITICAL"
+      event_type: "MetricThresholdExceeded"
+      payload:
+        session_id: "{session_id}"
+        alertname: "RedisConnectionExhausted"
+        summary: "Redis connections exhausted (50/50)"
+        service: "PaymentService"
+  - tick: 8
+    target: "redis.resources.used"
+    value: 5
+  - tick: 8
+    event:
+      entity_id: "PaymentService"
+      severity: "INFO"
+      event_type: "MetricThresholdRecovered"
+      payload:
+        session_id: "{session_id}"
+        alertname: "RedisConnectionExhausted"
+        service: "PaymentService"

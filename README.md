@@ -144,9 +144,13 @@ Diting/
 │
 ├── simulator/                # 仿真器模块
 │   ├── clock.py              # 仿真时钟
-│   ├── world.py              # 仿真世界状态 (Entity, Topology)
+│   ├── entity.py             # 仿真世界状态 (Entity, Topology)
 │   ├── pipeline.py           # 状态演进管道
 │   ├── event_bus.py          # 事件总线与事件结构
+│   ├── state_server.py       # 共享内存状态 HTTP API Server
+│   ├── scenario.py           # 故障剧本加载与应用模块
+│   ├── environment.py        # 声明式环境加载模块
+│   ├── environments/         # 声明式环境定义 (拓扑、初始资源)
 │   ├── projections/          # DDD 投影层 (Metric, Log, Trace, Alert)
 │   └── scenarios/            # 故障剧本库
 │
