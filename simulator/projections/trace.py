@@ -6,7 +6,7 @@ from simulator.event_bus import EventBus, BaseEvent
 
 class TraceProjection(BaseProjection):
     """
-    链路投影层 (OTel/Jaeger Mock)。
+    链路投影层 (OTel/Tempo Mock)。
     监听来自事件总线中完成请求的 TraceFinishedEvent，将其物理树结构缓存，
     并在查询时调用 TimeAligner 将其对齐转换至现实物理 Now 时间。
     """

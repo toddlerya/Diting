@@ -31,7 +31,8 @@ def main():
 
     # 2. 初始化投影层
     metric_proj = MetricProjection(bus, clock)
-    log_proj = LogProjection(bus, clock, seed=100, noise_rate=0.8) # 固定噪点种子并高配噪声以供 Demo 稳定输出
+    # 固定噪点种子并高配噪声以供 Demo 稳定输出
+    log_proj = LogProjection(bus, clock, seed=100, noise_rate=0.8)
     trace_proj = TraceProjection(bus, clock)
     alert_proj = AlertmanagerProjection(bus, clock)
 
@@ -42,7 +43,6 @@ def main():
 
     # 订阅 Finished Trace 以同步录入 metrics 投影
     def sync_projections(event):
-        req = event.payload["request"]
         session_id = event.payload.get("session_id", "demo_session")
         # 记录各组件的派生指标
         for s_id, entity in entities.items():
@@ -91,7 +91,7 @@ def main():
     print("\033[1;36m[2/3] --- 可观测性投影数据可视化 (已对齐物理现实 Now) ---\033[0m")
 
     # A. 打印 Trace 嵌套结构与重试
-    print("\n\033[1;35m>>> 1. Jaeger 分布式 Trace (嵌套树 + Sibling 重试) <<<\033[0m")
+    print("\n\033[1;35m>>> 1. Tempo 分布式 Trace (嵌套树 + Sibling 重试) <<<\033[0m")
     traces = trace_proj.query_traces("demo_session", real_now)
     # 取出故障时间段的 Trace (Tick 4 后的一个 Trace)
     # 我们以文字缩进打印

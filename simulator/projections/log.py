@@ -10,6 +10,7 @@ class LogProjection(BaseProjection):
     日志投影层 (Loki Mock)。
     订阅事件总线中的物理资源耗尽或系统异常事件，并将其加工渲染为带 trace_id 上下文的标准 Loki 格式日志。
     此外，支持使用局部 PRNG 局部隔离加噪声，以测试 Agent 的信息筛选与排噪能力。
+    (PRNG 是 Pseudo-Random Number Generator 的缩写，中文意为 “伪随机数生成器”)
     """
     def __init__(self, bus: EventBus, clock: SimulationClock, seed: int = 42, noise_rate: float = 0.001):
         super().__init__(bus, clock)
@@ -20,7 +21,7 @@ class LogProjection(BaseProjection):
         self.logs_db: Dict[str, List[dict]] = {}
         # 订阅资源状态异常事件以渲染日志
         self.bus.subscribe("ResourceExhausted", self._handle_event)
-        
+
     def _handle_event(self, event: BaseEvent):
         """
         异常事件回调。
@@ -30,7 +31,7 @@ class LogProjection(BaseProjection):
         session_id = payload.get("session_id", "default")
         if session_id not in self.logs_db:
             self.logs_db[session_id] = []
-            
+
         self.logs_db[session_id].append({
             "tick": event.tick,
             "service": event.entity_id,
@@ -38,7 +39,7 @@ class LogProjection(BaseProjection):
             "trace_id": event.trace_id,
             "msg": payload.get("msg", "Unknown Error")
         })
-        
+
     def query_logs(self, session_id: str, service: str, level: str, real_now: datetime) -> List[str]:
         """
         查询 Loki 日志接口，时间前缀对齐为现实 Now 物理时间。
@@ -50,7 +51,7 @@ class LogProjection(BaseProjection):
                 aligned_time = self.aligner.align_timestamp(log["tick"], real_now)
                 log_line = f"[{aligned_time.isoformat()}] [{log['level']}] [trace_id: {log['trace_id']}] {log['service']}: Failed due to {log['msg']}"
                 results.append(log_line)
-                
+
         # 仅当查询条件是 WARNING 级别时，才混入 WARNING 噪点日志以防污染其他级别。
         # 实时噪点的日志时间也使用 real_now 动态对齐。
         if level == "WARNING" and self.random_gen.random() < self.noise_rate:
@@ -59,7 +60,7 @@ class LogProjection(BaseProjection):
             if session_id not in self.logs_db:
                 self.logs_db[session_id] = []
             results.append(noise_line)
-            
+
         return results
 
 
