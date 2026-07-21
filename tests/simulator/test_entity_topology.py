@@ -37,3 +37,21 @@ def test_derived_metrics_with_noise_determinism():
     assert "latency" in metrics1
     assert metrics1["cpu_usage"] == metrics2["cpu_usage"]
     assert metrics1["latency"] == metrics2["latency"]
+
+
+def test_topology_validation():
+    # 1. 空拓扑校验
+    topo = Topology()
+    with pytest.raises(ValueError, match="仿真拓扑结构为空"):
+        topo.validate()
+
+    # 2. 正常 DAG 拓扑校验
+    topo.add_node("Gateway", "fan_out")
+    topo.add_dependency("Gateway", "OrderService", 1.0)
+    topo.validate()  # 应该不报错
+
+    # 3. 循环拓扑校验
+    topo.add_dependency("OrderService", "Gateway", 1.0)
+    with pytest.raises(ValueError, match="仿真拓扑结构中存在循环调用"):
+        topo.validate()
+

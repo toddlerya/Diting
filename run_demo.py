@@ -14,6 +14,10 @@ from simulator.projections.alert import AlertmanagerProjection
 from simulator.state_server import create_app
 from simulator.scenario import Scenario
 
+# 默认仿真会话 ID 常量
+DEMO_SESSION = "demo_session"
+
+
 def print_ascii_art():
     print("""
 \033[1;36m==================================================================
@@ -43,7 +47,7 @@ def main():
 
     # 订阅 Finished Trace 以同步录入 metrics 投影
     def sync_projections(event):
-        session_id = event.payload.get("session_id", "demo_session")
+        session_id = event.payload.get("session_id", DEMO_SESSION)
         # 记录各组件的派生指标
         for s_id, entity in entities.items():
             metrics = entity.derived_metrics()
@@ -70,17 +74,29 @@ def main():
 
     # 循环演进 10 个 tick
     for t in range(1, 11):
-        # 1. 打印控制台故障提示
-        if t == 4:
-            print(f"\n\033[1;31m[Tick {t}] >>> 注入故障：Redis 物理连接池满 (50/50) <<< \033[0m")
-        elif t == 8:
-            print(f"\n\033[1;32m[Tick {t}] >>> 故障自愈消解：释放 Redis 连接数 (5/50) <<< \033[0m")
+        # 1. 动态打印剧本中当前 Tick 的状态变更或事件注入提示
+        has_action = False
+        for step in scenario.steps:
+            if step.get("tick") == t:
+                if not has_action:
+                    print(f"\n\033[1;34m[Tick {t}] --- 剧本演进事件 ---\033[0m")
+                    has_action = True
+                if "target" in step:
+                    print(f"  \033[1;33m>>> 状态变更：{step['target']} -> {step['value']} <<<\033[0m")
+                elif "event" in step:
+                    evt = step["event"]
+                    payload = evt.get("payload", {})
+                    msg = payload.get("msg") or payload.get("summary") or evt.get("event_type")
+                    color = "\033[1;31m" if evt.get("severity") in ("CRITICAL", "ERROR") else "\033[1;32m"
+                    print(f"  {color}>>> 触发事件：[{evt.get('entity_id')}] {msg} <<<\033[0m")
+        if has_action:
+            print()
 
         # 2. 应用 YAML 剧本配置的状态变更和故障注入
-        scenario.apply(t, entities, bus, clock, session_id="demo_session")
+        scenario.apply(t, entities, bus, clock, session_id=DEMO_SESSION)
 
         # 3. 推演：运行 tick 演进（推进时钟）
-        pipeline.run_tick(ingress_qps=1.0, session_id="demo_session")
+        pipeline.run_tick(ingress_qps=1.0, session_id=DEMO_SESSION)
 
         time.sleep(0.02) # 极快推演
 
@@ -92,7 +108,7 @@ def main():
 
     # A. 打印 Trace 嵌套结构与重试
     print("\n\033[1;35m>>> 1. Tempo 分布式 Trace (嵌套树 + Sibling 重试) <<<\033[0m")
-    traces = trace_proj.query_traces("demo_session", real_now)
+    traces = trace_proj.query_traces(DEMO_SESSION, real_now)
     # 取出故障时间段的 Trace (Tick 4 后的一个 Trace)
     # 我们以文字缩进打印
     def print_span(span, indent=0):
@@ -112,8 +128,8 @@ def main():
 
     # B. 打印日志与白噪声
     print("\n\033[1;35m>>> 2. Loki 日志流 (故障日志 + 警告背景噪声) <<<\033[0m")
-    err_logs = log_proj.query_logs("demo_session", "PaymentService", "CRITICAL", real_now)
-    warn_logs = log_proj.query_logs("demo_session", "PaymentService", "WARNING", real_now)
+    err_logs = log_proj.query_logs(DEMO_SESSION, "PaymentService", "CRITICAL", real_now)
+    warn_logs = log_proj.query_logs(DEMO_SESSION, "PaymentService", "WARNING", real_now)
     print("CRITICAL 级故障日志:")
     for log in err_logs:
         print(f"  {log}")
@@ -124,7 +140,7 @@ def main():
     # C. 打印 Alertmanager 生命周期
     print("\n\033[1;35m>>> 3. Alertmanager 告警生命周期 (Firing & Resolved) <<<\033[0m")
     print("Resolved 告警列表 (历史):")
-    for a in alert_proj.get_resolved_alerts("demo_session", real_now):
+    for a in alert_proj.get_resolved_alerts(DEMO_SESSION, real_now):
         print(f"  Alertname: {a['labels']['alertname']} | Status: \033[32m{a['status']}\033[0m | startsAt: {a['startsAt']} | endsAt: {a['endsAt']}")
 
     # 6. 启动 API 服务
@@ -152,11 +168,11 @@ def main():
 
     print(f"\n\033[1;33m[3/3] 启动 In-Memory State HTTP Server API (Port: {port}) ... \033[0m")
     print("服务运行后，可通过如下接口进行多会话隔离查询：")
-    print(f"  * Metrics 查询 (CPU): http://127.0.0.1:{port}/api/v1/metrics?session_id=demo_session&metric=gateway_cpu_usage")
-    print(f"  * Metrics 查询 (Redis): http://127.0.0.1:{port}/api/v1/metrics?session_id=demo_session&metric=redis_utilization")
-    print(f"  * Logs 查询: http://127.0.0.1:{port}/api/v1/logs?session_id=demo_session&service=PaymentService&level=CRITICAL")
-    print(f"  * Traces 查询: http://127.0.0.1:{port}/api/v1/traces?session_id=demo_session")
-    print(f"  * Alerts 状态: http://127.0.0.1:{port}/api/v1/alerts?session_id=demo_session&status=resolved")
+    print(f"  * Metrics 查询 (CPU): http://127.0.0.1:{port}/api/v1/metrics?session_id={DEMO_SESSION}&metric=gateway_cpu_usage")
+    print(f"  * Metrics 查询 (Redis): http://127.0.0.1:{port}/api/v1/metrics?session_id={DEMO_SESSION}&metric=redis_utilization")
+    print(f"  * Logs 查询: http://127.0.0.1:{port}/api/v1/logs?session_id={DEMO_SESSION}&service=PaymentService&level=CRITICAL")
+    print(f"  * Traces 查询: http://127.0.0.1:{port}/api/v1/traces?session_id={DEMO_SESSION}")
+    print(f"  * Alerts 状态: http://127.0.0.1:{port}/api/v1/alerts?session_id={DEMO_SESSION}&status=resolved")
     print("\033[1;32m本地 Server 即将拉起，按 Ctrl + C 可终止程序。\033[0m\n")
 
     app = create_app(metric_proj, log_proj, trace_proj, alert_proj)

@@ -135,3 +135,35 @@ class Topology:
             Dict[str, float]: 下游依赖服务 ID 及其权重的映射。
         """
         return self.edges.get(entity_id, {})
+
+    def validate(self):
+        """
+        验证拓扑结构的合法性，必须是非空的有向无环图 (DAG)。
+        
+        Raises:
+            ValueError: 如果拓扑为空或存在循环依赖（环路）。
+        """
+        if not self.nodes:
+            raise ValueError("仿真拓扑结构为空，无法进行仿真推演，请先配置拓扑节点！")
+
+        # 使用 DFS 进行有向图的环路检测
+        visited = {}  # 0: 未访问, 1: 正在访问, 2: 已完成访问
+
+        def has_cycle(node: str) -> bool:
+            visited[node] = 1
+            downstreams = self.get_downstream_weights(node).keys()
+            for down in downstreams:
+                state = visited.get(down, 0)
+                if state == 1:
+                    return True  # 发现回边，说明有环
+                elif state == 0:
+                    if has_cycle(down):
+                        return True
+            visited[node] = 2
+            return False
+
+        for node in self.nodes:
+            if visited.get(node, 0) == 0:
+                if has_cycle(node):
+                    raise ValueError("仿真拓扑结构中存在循环调用（环路），必须为有向无环图（DAG）！")
+

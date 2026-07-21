@@ -83,3 +83,35 @@ def test_pipeline_request_routing_and_retries():
     assert payment_attempts[1].status == "TIMEOUT"
     # Order 自身最终也标记为 ERROR 或 TIMEOUT
     assert order_span.status == "TIMEOUT"
+
+
+def test_pipeline_cyclic_topology_raises_error():
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    bus = EventBus()
+    
+    # 构造一个有环路的拓扑: a -> b -> c -> a
+    a = ServiceEntity("a", "ServiceA", seed=42)
+    b = ServiceEntity("b", "ServiceB", seed=42)
+    c = ServiceEntity("c", "ServiceC", seed=42)
+    entities = {"a": a, "b": b, "c": c}
+    
+    topo = Topology()
+    topo.add_node("a", "route")
+    topo.add_dependency("a", "b", 1.0)
+    topo.add_node("b", "route")
+    topo.add_dependency("b", "c", 1.0)
+    topo.add_node("c", "route")
+    topo.add_dependency("c", "a", 1.0)
+    
+    with pytest.raises(ValueError, match="仿真拓扑结构中存在循环调用"):
+        StateEvolutionPipeline(entities, topo, clock, bus)
+
+
+def test_pipeline_empty_topology_raises_error():
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    bus = EventBus()
+    topo = Topology()
+    
+    with pytest.raises(ValueError, match="仿真拓扑结构为空"):
+        StateEvolutionPipeline({}, topo, clock, bus)
+

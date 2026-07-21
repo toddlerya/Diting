@@ -25,6 +25,7 @@ def load_environment(filepath: str) -> Tuple[Dict[str, Entity], Topology]:
         elif cls_name == "InfraEntity":
             entity = InfraEntity(entity_id, name, seed)
         else:
+            # 兜底策略：当显式指定为 "Entity" 或遇到未知的 class 类型时，降级退化为基类 Entity
             entity = Entity(entity_id, name, seed)
             
         entity.resources = val.get("resources", {})

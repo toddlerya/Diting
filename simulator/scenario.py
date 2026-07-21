@@ -1,10 +1,12 @@
-import yaml
-import copy
 from pathlib import Path
-from typing import Dict, List, Any
-from simulator.entity import Entity
-from simulator.event_bus import EventBus, BaseEvent
+from typing import Any, Dict, List
+
+import yaml
+
 from simulator.clock import SimulationClock
+from simulator.entity import Entity
+from simulator.event_bus import BaseEvent, EventBus
+
 
 class Scenario:
     def __init__(self, name: str, description: str, steps: List[Dict[str, Any]], seed: int = 42):
@@ -24,10 +26,10 @@ class Scenario:
 
         steps = []
         includes = data.get("include", [])
-        
+
         # simulator 根目录为当前文件所在目录
         simulator_dir = Path(__file__).resolve().parent
-        
+
         for inc in includes:
             inc_p = Path(inc)
             # 兼容 include 写法：可以是绝对路径，也可以是 "scenarios/xxx.yaml" 或相对于当前 YAML 的路径
@@ -39,7 +41,7 @@ class Scenario:
                 if not inc_path.exists():
                     # 尝试相对于当前 yaml 所在的目录
                     inc_path = path.parent / inc_p
-            
+
             if inc_path.exists():
                 inc_scenario = cls.from_yaml(str(inc_path))
                 steps.extend(inc_scenario.steps)
@@ -48,7 +50,7 @@ class Scenario:
 
         # 将当前 yaml 的 steps 追加进去
         steps.extend(data.get("steps", []))
-        
+
         # 按 tick 升序排列
         steps.sort(key=lambda x: x.get("tick", 0))
 
@@ -63,11 +65,11 @@ class Scenario:
         """
         在特定的 Tick 下执行当前剧本声明的所有故障注入和状态变更
         """
-        def format_val(val: Any) -> Any:
+        def replace_session_id(val: Any) -> Any:
             if isinstance(val, dict):
-                return {k: format_val(v) for k, v in val.items()}
+                return {k: replace_session_id(v) for k, v in val.items()}
             elif isinstance(val, list):
-                return [format_val(v) for v in val]
+                return [replace_session_id(v) for v in val]
             elif isinstance(val, str):
                 return val.replace("{session_id}", session_id)
             return val
@@ -80,7 +82,7 @@ class Scenario:
             if "target" in step and "value" in step:
                 target = step["target"]
                 value = step["value"]
-                
+
                 parts = target.split(".")
                 if len(parts) >= 2:
                     entity_id = parts[0]
@@ -100,12 +102,12 @@ class Scenario:
                 entity_id = evt_cfg.get("entity_id", "")
                 severity = evt_cfg.get("severity", "INFO")
                 event_type = evt_cfg.get("event_type", "Generic")
-                payload = format_val(evt_cfg.get("payload", {}))
+                payload = replace_session_id(evt_cfg.get("payload", {}))
                 trace_id = evt_cfg.get("trace_id")
 
                 # 生成确定性的 event_id
                 event_id = f"evt_s_{tick}_{entity_id}_{event_type}_{hash(str(payload)) % 10000}"
-                
+
                 bus.publish(BaseEvent(
                     event_id=event_id,
                     tick=tick,
