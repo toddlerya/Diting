@@ -7,12 +7,18 @@ from simulator.entity import Entity, InfraEntity, ServiceEntity, Topology
 from simulator.event_bus import BaseEvent, EventBus
 
 
+class SpanStatus:
+    OK = "OK"
+    TIMEOUT = "TIMEOUT"
+    ERROR = "ERROR"
+
+
 class SpanNode:
     def __init__(self, span_id: str, parent_span_id: Optional[str], service: str):
         self.span_id = span_id
         self.parent_span_id = parent_span_id
         self.service = service
-        self.status = "OK"
+        self.status = SpanStatus.OK
         self.duration = 0.0
         self.retry_count = 0
         self.error_message = ""
@@ -159,7 +165,7 @@ class StateEvolutionPipeline:
             used = entity.resources.used
             capacity = entity.resources.capacity
             if capacity > 0 and used >= capacity:
-                node.status = "TIMEOUT"
+                node.status = SpanStatus.TIMEOUT
                 node.error_message = f"{entity.name} resource capacity exhausted ({used}/{capacity})"
         elif isinstance(entity, ServiceEntity):
             res = entity.resources
@@ -169,10 +175,10 @@ class StateEvolutionPipeline:
             max_heap = res.max_heap_mb
 
             if active_workers >= max_workers:
-                node.status = "TIMEOUT"
+                node.status = SpanStatus.TIMEOUT
                 node.error_message = f"{entity.name} thread pool exhausted ({active_workers}/{max_workers})"
             elif heap_used >= max_heap:
-                node.status = "ERROR"
+                node.status = SpanStatus.ERROR
                 node.error_message = f"{entity.name} Out Of Memory (OOM) ({heap_used}MB/{max_heap}MB)"
 
         # 2. 递归判定子 Span 节点，自底向上流转并处理重试
@@ -191,7 +197,7 @@ class StateEvolutionPipeline:
                 self._evaluate_span_node(child)
 
                 # 若子节点调用失败，并且当前服务开启了重试策略 (max_attempts > 1)
-                if child.status != "OK" and max_attempts > 1:
+                if child.status != SpanStatus.OK and max_attempts > 1:
                     attempts = [child]
                     success = False
 
@@ -202,7 +208,7 @@ class StateEvolutionPipeline:
                         self._evaluate_span_node(retry_child)
                         attempts.append(retry_child)
 
-                        if retry_child.status == "OK":
+                        if retry_child.status == SpanStatus.OK:
                             success = True
                             break
 
@@ -214,7 +220,7 @@ class StateEvolutionPipeline:
                 else:
                     resolved_children.append(child)
                     # 未开启重试时，直接将下游子节点的失败状态向父节点传播
-                    if child.status != "OK":
+                    if child.status != SpanStatus.OK:
                         node.status = child.status
                         node.error_message = child.error_message
 

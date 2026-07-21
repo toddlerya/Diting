@@ -3,7 +3,7 @@ import pytest
 from simulator.clock import SimulationClock
 from simulator.event_bus import EventBus
 from simulator.entity import ServiceEntity, InfraEntity, Topology
-from simulator.pipeline import StateEvolutionPipeline
+from simulator.pipeline import StateEvolutionPipeline, SpanStatus
 
 from simulator.schema import RetryPolicyConfig
 
@@ -61,7 +61,7 @@ def test_pipeline_request_routing_and_retries():
     
     root_span = finished_traces[0].root_span
     assert root_span.service == "gateway"
-    assert root_span.status == "OK"
+    assert root_span.status == SpanStatus.OK
     assert len(root_span.children) == 1
     assert root_span.children[0].service == "order"
     
@@ -81,10 +81,10 @@ def test_pipeline_request_routing_and_retries():
     
     # 应该尝试了 2 次 (max_attempts = 2)
     assert len(payment_attempts) == 2
-    assert payment_attempts[0].status == "TIMEOUT"
-    assert payment_attempts[1].status == "TIMEOUT"
+    assert payment_attempts[0].status == SpanStatus.TIMEOUT
+    assert payment_attempts[1].status == SpanStatus.TIMEOUT
     # Order 自身最终也标记为 ERROR 或 TIMEOUT
-    assert order_span.status == "TIMEOUT"
+    assert order_span.status == SpanStatus.TIMEOUT
 
 
 def test_pipeline_cyclic_topology_raises_error():
