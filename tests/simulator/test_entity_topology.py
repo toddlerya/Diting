@@ -24,11 +24,11 @@ def test_derived_metrics_with_noise_determinism():
     
     # 初始化物理资源状态
     for srv in [srv1, srv2]:
-        srv.resources["active_workers"] = 5
-        srv.resources["max_workers"] = 10
-        srv.resources["heap_used_mb"] = 256
-        srv.resources["max_heap_mb"] = 512
-        srv.resources["request_queue_len"] = 0
+        srv.resources.active_workers = 5
+        srv.resources.max_workers = 10
+        srv.resources.heap_used_mb = 256
+        srv.resources.max_heap_mb = 512
+        srv.resources.request_queue_len = 0
         
     metrics1 = srv1.derived_metrics()
     metrics2 = srv2.derived_metrics()

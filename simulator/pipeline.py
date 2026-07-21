@@ -156,16 +156,17 @@ class StateEvolutionPipeline:
 
         # 1. 物理上限判定 (工作线程耗尽, OOM, 或 Infra 资源满)
         if isinstance(entity, InfraEntity):
-            used = entity.resources.get("used", 0)
-            capacity = entity.resources.get("capacity", 0)
+            used = entity.resources.used
+            capacity = entity.resources.capacity
             if capacity > 0 and used >= capacity:
                 node.status = "TIMEOUT"
                 node.error_message = f"{entity.name} resource capacity exhausted ({used}/{capacity})"
         elif isinstance(entity, ServiceEntity):
-            active_workers = entity.resources.get("active_workers", 0)
-            max_workers = entity.resources.get("max_workers", 1)
-            heap_used = entity.resources.get("heap_used_mb", 0)
-            max_heap = entity.resources.get("max_heap_mb", 1)
+            res = entity.resources
+            active_workers = res.active_workers
+            max_workers = res.max_workers
+            heap_used = res.heap_used_mb
+            max_heap = res.max_heap_mb
 
             if active_workers >= max_workers:
                 node.status = "TIMEOUT"
@@ -176,8 +177,13 @@ class StateEvolutionPipeline:
 
         # 2. 递归判定子 Span 节点，自底向上流转并处理重试
         if node.children:
-            retry_policy = entity.resources.get("retry_policy") if entity else None
-            max_attempts = retry_policy.get("max_attempts", 1) if retry_policy else 1
+            retry_policy = getattr(entity.resources, "retry_policy", None) if entity else None
+            if isinstance(retry_policy, dict):
+                max_attempts = retry_policy.get("max_attempts", 1)
+            elif retry_policy is not None:
+                max_attempts = getattr(retry_policy, "max_attempts", 1)
+            else:
+                max_attempts = 1
 
             resolved_children = []
             for child in list(node.children):

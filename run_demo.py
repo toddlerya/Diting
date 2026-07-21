@@ -1,18 +1,19 @@
-import uvicorn
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from typing import Dict
+
+import uvicorn
+
 from simulator.clock import SimulationClock
-from simulator.event_bus import EventBus, BaseEvent
 from simulator.environment import load_environment
+from simulator.event_bus import EventBus
 from simulator.pipeline import StateEvolutionPipeline
-from simulator.projections.metric import MetricProjection
-from simulator.projections.log import LogProjection
-from simulator.projections.trace import TraceProjection
 from simulator.projections.alert import AlertmanagerProjection
-from simulator.state_server import create_app
+from simulator.projections.log import LogProjection
+from simulator.projections.metric import MetricProjection
+from simulator.projections.trace import TraceProjection
 from simulator.scenario import Scenario
+from simulator.state_server import create_app
 
 # 默认仿真会话 ID 常量
 DEMO_SESSION = "demo_session"

@@ -64,8 +64,8 @@ def test_scenario_apply():
     bus = EventBus()
     
     redis = InfraEntity("redis", "RedisPool")
-    redis.resources["used"] = 0
-    redis.resources["capacity"] = 50
+    redis.resources.used = 0
+    redis.resources.capacity = 50
     entities = {"redis": redis}
     
     steps = [
@@ -96,7 +96,7 @@ def test_scenario_apply():
     
     # 应用第 1 tick
     scenario.apply(1, entities, bus, clock, session_id="session_abc")
-    assert redis.resources["used"] == 30
+    assert redis.resources.used == 30
     assert len(events) == 0
     
     # 应用第 2 tick

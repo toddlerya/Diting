@@ -1,12 +1,14 @@
 import random
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
+from pydantic import BaseModel
+from simulator.schema import BaseResource, ServiceResource, InfraResource
 
 class Entity:
     """
     仿真实体基类。
     用于代表仿真系统中的各种物理或逻辑组件（如服务、数据库等），并持有其基础资源指标。
     """
-    def __init__(self, entity_id: str, name: str, seed: int = 42):
+    def __init__(self, entity_id: str, name: str, seed: int = 42, resources: Optional[Union[BaseResource, Dict]] = None):
         """
         初始化实体。
 
@@ -14,12 +16,27 @@ class Entity:
             entity_id (str): 实体的唯一标识。
             name (str): 实体的易读名称。
             seed (int, optional): 局部随机数生成器的种子，用于保持噪声可复现。默认为 42。
+            resources (Optional[Union[BaseResource, Dict]]): 实体基础资源模型。
         """
         self.entity_id = entity_id
         self.name = name
-        self.resources: Dict[str, float] = {}
-        # 实例化局部伪随机生成器以实现完全确定性的白噪声
+        self._resources: BaseResource = BaseResource()
         self.random_gen = random.Random(seed)
+        if resources is not None:
+            self.resources = resources
+
+    @property
+    def resources(self) -> BaseResource:
+        return self._resources
+
+    @resources.setter
+    def resources(self, val: Union[BaseResource, Dict]):
+        if isinstance(val, BaseResource):
+            self._resources = val
+        elif isinstance(val, dict):
+            self._resources = BaseResource.model_validate(val)
+        else:
+            self._resources = val
 
     def derived_metrics(self) -> Dict[str, float]:
         """
@@ -36,6 +53,29 @@ class ServiceEntity(Entity):
     微服务实体。
     模拟一个运行的微服务实例，可根据资源消耗计算服务的 CPU 使用率、请求延迟等衍生指标。
     """
+    def __init__(self, entity_id: str, name: str, seed: int = 42, resources: Optional[Union[ServiceResource, Dict]] = None):
+        super().__init__(entity_id, name, seed, resources)
+        if not isinstance(self._resources, ServiceResource):
+            if isinstance(self._resources, BaseModel):
+                self._resources = ServiceResource.model_validate(self._resources.model_dump())
+            elif isinstance(self._resources, dict):
+                self._resources = ServiceResource.model_validate(self._resources)
+            else:
+                self._resources = ServiceResource()
+
+    @property
+    def resources(self) -> ServiceResource:
+        return self._resources  # type: ignore
+
+    @resources.setter
+    def resources(self, val: Union[ServiceResource, Dict]):
+        if isinstance(val, ServiceResource):
+            self._resources = val
+        elif isinstance(val, dict):
+            self._resources = ServiceResource.model_validate(val)
+        else:
+            self._resources = val
+
     def derived_metrics(self) -> Dict[str, float]:
         """
         计算并返回微服务的派生监控指标（CPU 使用率、服务响应延迟、错误率等）。
@@ -47,11 +87,12 @@ class ServiceEntity(Entity):
         Returns:
             Dict[str, float]: 包含 'cpu_usage'、'latency' 和 'error_rate' 的字典。
         """
-        active_workers = self.resources.get("active_workers", 0)
-        max_workers = self.resources.get("max_workers", 1)
-        heap_used = self.resources.get("heap_used_mb", 0)
-        max_heap = self.resources.get("max_heap_mb", 1)
-        queue_len = self.resources.get("request_queue_len", 0)
+        res = self.resources
+        active_workers = res.active_workers
+        max_workers = res.max_workers if res.max_workers > 0 else 1
+        heap_used = res.heap_used_mb
+        max_heap = res.max_heap_mb if res.max_heap_mb > 0 else 1.0
+        queue_len = res.request_queue_len
         
         # 物理衍生公式计算 CPU (带白噪声)
         base_cpu = (active_workers / max_workers) * 80 + (heap_used / max_heap) * 15 + queue_len * 2
@@ -72,6 +113,29 @@ class InfraEntity(Entity):
     基础设施实体。
     模拟诸如 Redis 缓存池、数据库连接池等底层资源，可计算资源利用率指标。
     """
+    def __init__(self, entity_id: str, name: str, seed: int = 42, resources: Optional[Union[InfraResource, Dict]] = None):
+        super().__init__(entity_id, name, seed, resources)
+        if not isinstance(self._resources, InfraResource):
+            if isinstance(self._resources, BaseModel):
+                self._resources = InfraResource.model_validate(self._resources.model_dump())
+            elif isinstance(self._resources, dict):
+                self._resources = InfraResource.model_validate(self._resources)
+            else:
+                self._resources = InfraResource()
+
+    @property
+    def resources(self) -> InfraResource:
+        return self._resources  # type: ignore
+
+    @resources.setter
+    def resources(self, val: Union[InfraResource, Dict]):
+        if isinstance(val, InfraResource):
+            self._resources = val
+        elif isinstance(val, dict):
+            self._resources = InfraResource.model_validate(val)
+        else:
+            self._resources = val
+
     def derived_metrics(self) -> Dict[str, float]:
         """
         计算并返回基础设施的利用率指标。
@@ -79,8 +143,9 @@ class InfraEntity(Entity):
         Returns:
             Dict[str, float]: 包含 'utilization' 的字典。
         """
-        used = self.resources.get("used", 0)
-        capacity = self.resources.get("capacity", 1)
+        res = self.resources
+        used = res.used
+        capacity = res.capacity if res.capacity > 0 else 1.0
         util = (used / capacity) * 100
         return {
             "utilization": util

@@ -5,6 +5,8 @@ from simulator.event_bus import EventBus
 from simulator.entity import ServiceEntity, InfraEntity, Topology
 from simulator.pipeline import StateEvolutionPipeline
 
+from simulator.schema import RetryPolicyConfig
+
 def test_pipeline_request_routing_and_retries():
     # 模拟拓扑: Gateway -> Order -> Payment (其中 Payment 遭遇故障，Order 触发重试)
     clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
@@ -35,14 +37,14 @@ def test_pipeline_request_routing_and_retries():
     
     # 初始化资源
     for entity in [gateway, order, payment]:
-        entity.resources["active_workers"] = 2
-        entity.resources["max_workers"] = 10
-        entity.resources["heap_used_mb"] = 128
-        entity.resources["max_heap_mb"] = 512
-        entity.resources["request_queue_len"] = 0
+        entity.resources.active_workers = 2
+        entity.resources.max_workers = 10
+        entity.resources.heap_used_mb = 128
+        entity.resources.max_heap_mb = 512
+        entity.resources.request_queue_len = 0
         
-    redis.resources["used"] = 10
-    redis.resources["capacity"] = 50
+    redis.resources.used = 10
+    redis.resources.capacity = 50
     
     # 订阅 TraceFinishedEvent 收集最终 Trace
     finished_traces = []
@@ -64,8 +66,8 @@ def test_pipeline_request_routing_and_retries():
     assert root_span.children[0].service == "order"
     
     # 2. 注入 Redis 爆满故障，并配置 Order 针对 Payment 的 2 次重试策略
-    redis.resources["used"] = 50 # 占满连接池，触发超时
-    order.resources["retry_policy"] = {"max_attempts": 2}
+    redis.resources.used = 50 # 占满连接池，触发超时
+    order.resources.retry_policy = RetryPolicyConfig(max_attempts=2)
     
     finished_traces.clear()
     # 运行第二个故障 tick

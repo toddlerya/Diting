@@ -50,12 +50,12 @@ entities:
     
     # 校验属性与资源参数
     assert gateway.name == "Gateway"
-    assert gateway.resources["active_workers"] == 5
-    assert gateway.resources["max_workers"] == 20
+    assert gateway.resources.active_workers == 5
+    assert gateway.resources.max_workers == 20
     
     assert redis.name == "RedisPool"
-    assert redis.resources["used"] == 2
-    assert redis.resources["capacity"] == 10
+    assert redis.resources.used == 2
+    assert redis.resources.capacity == 10
     
     # 验证 Topology 成功组装
     assert "gateway" in topo.nodes

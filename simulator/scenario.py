@@ -6,6 +6,7 @@ import yaml
 from simulator.clock import SimulationClock
 from simulator.entity import Entity
 from simulator.event_bus import BaseEvent, EventBus
+from simulator.schema import RetryPolicyConfig
 
 
 class Scenario:
@@ -91,7 +92,10 @@ class Scenario:
                         # 如 redis.resources.used -> parts: ['redis', 'resources', 'used']
                         if parts[1] == "resources" and len(parts) == 3:
                             resource_key = parts[2]
-                            entity.resources[resource_key] = value
+                            if resource_key == "retry_policy" and isinstance(value, dict):
+                                setattr(entity.resources, resource_key, RetryPolicyConfig.model_validate(value))
+                            else:
+                                setattr(entity.resources, resource_key, value)
                         else:
                             # 允许其他属性修改 (如 target = gateway.some_prop)
                             setattr(entity, parts[1], value)
