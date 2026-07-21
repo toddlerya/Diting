@@ -85,6 +85,7 @@ graph TD
   * **磁盘写满** -> 触发 **IO 失败**。
 * **共享资源等效竞争**：对于多个服务共用同一个物理底座（如 Redis/DB）的争抢场景，采用求和判定逻辑等效代替复杂互斥锁，确保仿真逻辑极简但对 Agent 输出 100% 真实的可观测信号。
 * **派生指标 (Derived Metrics)**：所有的 CPU、内存使用率、延迟（Latency）、错误率都是基于当前物理状态通过物理计算公式**衍生**出的，并自带 $\pm 2\%$ 的噪声扰动，保证监控的真实同步与抗噪挑战。
+* **强类型资源与配置校验 (Pydantic Resource Schemas)**：所有的物理资源与系统拓扑采用强类型 Pydantic 模型（`ServiceResource`, `InfraResource`, `EnvironmentConfig`）定义在 `simulator/schema.py` 中。在 `load_environment()` 读取 YAML 时自动执行严格校验，实现配置错误与非法边界（如负数线程数、缺项）的 Fail-Fast 拦截，杜绝运行时拼写错漏。
 * **声明式环境与拓扑感知 (Declarative Topology)**：整个系统的拓扑结构与每个组件的默认物理资源（如工作线程数、JVM堆大小、已用和连接容量、重试策略等）完全采用 YAML 声明式配置（存放在 `simulator/environments/` 目录中），并通过 `load_environment()` 进行无硬编码动态加载。拓扑显式区分调用语义：
   * **Fan-out (并行扇出)**：同时调用所有依赖服务，多为聚合网关层。
   * **Route (路由选择)**：单次 Request 依据权重在路径中随机游走。
@@ -152,6 +153,7 @@ Diting/
 │
 ├── simulator/                # 仿真器模块
 │   ├── clock.py              # 仿真时钟
+│   ├── schema.py             # Pydantic 资源模型与 YAML 配置 Schema
 │   ├── entity.py             # 仿真世界状态 (Entity, Topology)
 │   ├── pipeline.py           # 状态演进管道
 │   ├── event_bus.py          # 事件总线与事件结构

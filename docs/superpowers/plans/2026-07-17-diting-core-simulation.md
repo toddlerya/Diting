@@ -5,7 +5,7 @@
 **Goal:** 构建 Diting 系统状态仿真的核心底座。实现带有 100ms 动态对齐偏移时钟、加权拓扑（Fan-out/Route）随机路径游走、包含错误状态与重试节点的嵌套 Span 链生成、逻辑级物理资源上限（503/Timeout/OOM/IO 异常）、Alertmanager 告警消解（Firing -> Resolved）以及跨进程 In-Memory State HTTP State Server 接口。
 
 > [!NOTE]
-> **架构演进说明 (重构)**：在完成仿真底座初版后，项目已对仿真引擎完成了重构，将原本硬编码的测试环境拓扑、初始实体资源以及故障注入逻辑完全解耦并转为声明式 YAML 配置（具体存放在 `simulator/environments/` 与 `simulator/scenarios/` 目录中），并通过新实现的 `load_environment()` 与 `Scenario.from_yaml()` 进行无硬编码动态加载。
+> **架构演进说明 (重构)**：在完成仿真底座初版后，项目已对仿真引擎完成了重构，将原本硬编码的测试环境拓扑、初始实体资源以及故障注入逻辑完全解耦并转为声明式 YAML 配置（具体存放在 `simulator/environments/` 与 `simulator/scenarios/` 目录中），并通过新实现的 `load_environment()` 与 `Scenario.from_yaml()` 进行无硬编码动态加载。同时进一步引入了 Pydantic 强类型模型层（定义在 `simulator/schema.py` 中的 `ServiceResource`, `InfraResource`, `EnvironmentConfig`），在 YAML 加载时强制执行配置校验与边界拦截（Fail-Fast）。
 
 **Architecture:** 
 1. `SimulationClock` 离线推推演，并在投影导出时动态将最后一个 Tick 映射至当前的物理 $T_{\text{real\_now}}$，确保 MCP 时间相对查询不落空。
