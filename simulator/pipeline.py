@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from simulator.clock import SimulationClock
 from simulator.entity import Entity, InfraEntity, ServiceEntity, Topology
-from simulator.event_bus import BaseEvent, EventBus
+from simulator.event_bus import BaseEvent, EventBus, EventType
 
 
 class SpanStatus:
@@ -84,7 +84,7 @@ class StateEvolutionPipeline:
                 timestamp=now,
                 entity_id=entry_point,
                 severity="INFO",
-                event_type="TraceFinishedEvent",
+                event_type=EventType.TRACE_FINISHED,
                 payload={"session_id": session_id, "request": request}
             ))
 

@@ -6,7 +6,7 @@ import uvicorn
 
 from simulator.clock import SimulationClock
 from simulator.environment import load_environment
-from simulator.event_bus import EventBus
+from simulator.event_bus import EventBus, EventType
 from simulator.pipeline import StateEvolutionPipeline
 from simulator.projections.alert import AlertmanagerProjection
 from simulator.projections.log import LogProjection
@@ -62,7 +62,7 @@ def main():
                 if "utilization" in metrics:
                     metric_proj.record_metric(session_id, f"{s_id}_utilization", event.tick, metrics["utilization"])
 
-    bus.subscribe("TraceFinishedEvent", sync_projections)
+    bus.subscribe(EventType.TRACE_FINISHED, sync_projections)
 
     # 4. 创建演进流水线并加载剧本
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)

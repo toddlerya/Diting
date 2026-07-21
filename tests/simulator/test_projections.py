@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 import pytest
-from simulator.event_bus import EventBus, BaseEvent
+from simulator.event_bus import EventBus, BaseEvent, EventType
 from simulator.pipeline import SpanNode, Request
 from simulator.clock import SimulationClock
 from simulator.projections.metric import MetricProjection
@@ -108,7 +108,7 @@ def test_trace_projection_alignment():
         timestamp=clock.now(),
         entity_id="gateway",
         severity="INFO",
-        event_type="TraceFinishedEvent",
+        event_type=EventType.TRACE_FINISHED,
         payload={"session_id": "sess_trace", "request": request}
     ))
     

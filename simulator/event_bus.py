@@ -1,5 +1,17 @@
 from datetime import datetime
-from typing import Optional, Callable, Dict, List
+from enum import Enum
+from typing import Optional, Callable, Dict, List, Union
+
+class EventType(str, Enum):
+    """
+    仿真事件类型常量枚举。
+    继承 str 以保证与标准字符串比较及序列化的兼容性。
+    """
+    TRACE_FINISHED = "TraceFinishedEvent"
+    GENERIC = "Generic"
+    RESOURCE_EXHAUSTED = "ResourceExhausted"
+    METRIC_THRESHOLD_EXCEEDED = "MetricThresholdExceeded"
+    METRIC_THRESHOLD_RECOVERED = "MetricThresholdRecovered"
 
 class BaseEvent:
     """
@@ -7,7 +19,7 @@ class BaseEvent:
     用于封装仿真过程中产生的各类事件的通用属性。
     """
     def __init__(self, event_id: str, tick: int, timestamp: datetime, 
-                 entity_id: str, severity: str, event_type: str, 
+                 entity_id: str, severity: str, event_type: Union[EventType, str], 
                  payload: dict, trace_id: Optional[str] = None):
         """
         初始化基础事件。
@@ -40,12 +52,12 @@ class EventBus:
         """初始化事件总线，构建空的订阅关系表。"""
         self._subscribers: Dict[str, List[Callable]] = {}
         
-    def subscribe(self, event_type: str, callback: Callable):
+    def subscribe(self, event_type: Union[EventType, str], callback: Callable):
         """
         订阅指定类型的事件。
 
         Args:
-            event_type (str): 要订阅的事件类型名称。
+            event_type (Union[EventType, str]): 要订阅的事件类型名称或枚举。
             callback (Callable): 事件触发时的回调处理函数。该函数需接收一个 BaseEvent 实例作为参数。
         """
         if event_type not in self._subscribers:

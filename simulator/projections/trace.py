@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Dict, List
 from simulator.projections.base import BaseProjection
 from simulator.clock import SimulationClock, TimeAligner
-from simulator.event_bus import EventBus, BaseEvent
+from simulator.event_bus import EventBus, BaseEvent, EventType
 
 class TraceProjection(BaseProjection):
     """
@@ -15,7 +15,7 @@ class TraceProjection(BaseProjection):
         # 内存 Trace 数据库：session_id -> list of traces
         self.traces_db: Dict[str, List[dict]] = {}
         # 订阅已完成的请求 Trace 事件
-        self.bus.subscribe("TraceFinishedEvent", self._handle_event)
+        self.bus.subscribe(EventType.TRACE_FINISHED, self._handle_event)
         
     def _handle_event(self, event: BaseEvent):
         """

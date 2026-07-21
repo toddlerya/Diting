@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import pytest
 from simulator.clock import SimulationClock
-from simulator.event_bus import EventBus
+from simulator.event_bus import EventBus, EventType
 from simulator.entity import ServiceEntity, InfraEntity, Topology
 from simulator.pipeline import StateEvolutionPipeline, SpanStatus
 
@@ -51,7 +51,7 @@ def test_pipeline_request_routing_and_retries():
     def trace_collector(event):
         finished_traces.append(event.payload["request"])
         
-    bus.subscribe("TraceFinishedEvent", trace_collector)
+    bus.subscribe(EventType.TRACE_FINISHED, trace_collector)
     
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
     
