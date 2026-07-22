@@ -1,9 +1,10 @@
 import random
 from datetime import datetime
-from typing import Dict, List
-from simulator.projections.base import BaseProjection
-from simulator.event_bus import EventBus, BaseEvent
+
 from simulator.clock import SimulationClock
+from simulator.event_bus import BaseEvent, EventBus
+from simulator.projections.base import BaseProjection
+
 
 class LogProjection(BaseProjection):
     """
@@ -12,13 +13,16 @@ class LogProjection(BaseProjection):
     此外，支持使用局部 PRNG 局部隔离加噪声，以测试 Agent 的信息筛选与排噪能力。
     (PRNG 是 Pseudo-Random Number Generator 的缩写，中文意为 “伪随机数生成器”)
     """
-    def __init__(self, bus: EventBus, clock: SimulationClock, seed: int = 42, noise_rate: float = 0.001):
+
+    def __init__(
+        self, bus: EventBus, clock: SimulationClock, seed: int = 42, noise_rate: float = 0.001
+    ):
         super().__init__(bus, clock)
         # 用剧本分配的随机种子实例化 PRNG，防止多轮评测间干扰，保持确定性
         self.random_gen = random.Random(seed)
         self.noise_rate = noise_rate
         # 内存日志数据库：session_id -> list of log dicts
-        self.logs_db: Dict[str, List[dict]] = {}
+        self.logs_db: dict[str, list[dict]] = {}
         # 订阅资源状态异常事件以渲染日志
         self.bus.subscribe("ResourceExhausted", self._handle_event)
 
@@ -32,15 +36,19 @@ class LogProjection(BaseProjection):
         if session_id not in self.logs_db:
             self.logs_db[session_id] = []
 
-        self.logs_db[session_id].append({
-            "tick": event.tick,
-            "service": event.entity_id,
-            "level": event.severity,
-            "trace_id": event.trace_id,
-            "msg": payload.get("msg", "Unknown Error")
-        })
+        self.logs_db[session_id].append(
+            {
+                "tick": event.tick,
+                "service": event.entity_id,
+                "level": event.severity,
+                "trace_id": event.trace_id,
+                "msg": payload.get("msg", "Unknown Error"),
+            }
+        )
 
-    def query_logs(self, session_id: str, service: str, level: str, real_now: datetime) -> List[str]:
+    def query_logs(
+        self, session_id: str, service: str, level: str, real_now: datetime
+    ) -> list[str]:
         """
         查询 Loki 日志接口，时间前缀对齐为现实 Now 物理时间。
         """
@@ -62,6 +70,3 @@ class LogProjection(BaseProjection):
             results.append(noise_line)
 
         return results
-
-
-

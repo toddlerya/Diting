@@ -1,40 +1,37 @@
-from datetime import datetime, timezone
-import pytest
-from simulator.clock import SimulationClock
-from simulator.event_bus import EventBus, EventType
-from simulator.entity import ServiceEntity, InfraEntity, Topology
-from simulator.pipeline import StateEvolutionPipeline, SpanStatus
+from datetime import UTC, datetime
 
+import pytest
+
+from simulator.clock import SimulationClock
+from simulator.entity import InfraEntity, ServiceEntity, Topology
+from simulator.event_bus import EventBus, EventType
+from simulator.pipeline import SpanStatus, StateEvolutionPipeline
 from simulator.schema import RetryPolicyConfig
+
 
 def test_pipeline_request_routing_and_retries():
     # 模拟拓扑: Gateway -> Order -> Payment (其中 Payment 遭遇故障，Order 触发重试)
-    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=UTC))
     bus = EventBus()
-    
+
     gateway = ServiceEntity("gateway", "Gateway", seed=42)
     order = ServiceEntity("order", "OrderService", seed=42)
     payment = ServiceEntity("payment", "PaymentService", seed=42)
     redis = InfraEntity("redis", "RedisCache", seed=42)
-    
-    entities = {
-        "gateway": gateway,
-        "order": order,
-        "payment": payment,
-        "redis": redis
-    }
-    
+
+    entities = {"gateway": gateway, "order": order, "payment": payment, "redis": redis}
+
     # 拓扑定义
     topo = Topology()
     topo.add_node("gateway", "fan_out")
     topo.add_dependency("gateway", "order", 1.0)
-    
+
     topo.add_node("order", "route")
     topo.add_dependency("order", "payment", 1.0)
-    
+
     topo.add_node("payment", "route")
     topo.add_dependency("payment", "redis", 1.0)
-    
+
     # 初始化资源
     for entity in [gateway, order, payment]:
         entity.resources.active_workers = 2
@@ -42,43 +39,44 @@ def test_pipeline_request_routing_and_retries():
         entity.resources.heap_used_mb = 128
         entity.resources.max_heap_mb = 512
         entity.resources.request_queue_len = 0
-        
+
     redis.resources.used = 10
     redis.resources.capacity = 50
-    
+
     # 订阅 TraceFinishedEvent 收集最终 Trace
     finished_traces = []
+
     def trace_collector(event):
         finished_traces.append(event.payload["request"])
-        
+
     bus.subscribe(EventType.TRACE_FINISHED, trace_collector)
-    
+
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
-    
+
     # 1. 运行第一个正常 tick
     pipeline.run_tick(ingress_qps=1.0)
     assert len(finished_traces) == 1
-    
+
     root_span = finished_traces[0].root_span
     assert root_span.service == "gateway"
     assert root_span.status == SpanStatus.OK
     assert len(root_span.children) == 1
     assert root_span.children[0].service == "order"
-    
+
     # 2. 注入 Redis 爆满故障，并配置 Order 针对 Payment 的 2 次重试策略
-    redis.resources.used = 50 # 占满连接池，触发超时
+    redis.resources.used = 50  # 占满连接池，触发超时
     order.resources.retry_policy = RetryPolicyConfig(max_attempts=2)
-    
+
     finished_traces.clear()
     # 运行第二个故障 tick
     pipeline.run_tick(ingress_qps=1.0)
     assert len(finished_traces) == 1
-    
+
     fail_root = finished_traces[0].root_span
     # 检查重试 Span 是否以同层 children 的结构生成（即 order 下面拥有 2 个同层的 payment 尝试节点）
     order_span = fail_root.children[0]
     payment_attempts = [child for child in order_span.children if child.service == "payment"]
-    
+
     # 应该尝试了 2 次 (max_attempts = 2)
     assert len(payment_attempts) == 2
     assert payment_attempts[0].status == SpanStatus.TIMEOUT
@@ -88,15 +86,15 @@ def test_pipeline_request_routing_and_retries():
 
 
 def test_pipeline_cyclic_topology_raises_error():
-    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=UTC))
     bus = EventBus()
-    
+
     # 构造一个有环路的拓扑: a -> b -> c -> a
     a = ServiceEntity("a", "ServiceA", seed=42)
     b = ServiceEntity("b", "ServiceB", seed=42)
     c = ServiceEntity("c", "ServiceC", seed=42)
     entities = {"a": a, "b": b, "c": c}
-    
+
     topo = Topology()
     topo.add_node("a", "route")
     topo.add_dependency("a", "b", 1.0)
@@ -104,104 +102,105 @@ def test_pipeline_cyclic_topology_raises_error():
     topo.add_dependency("b", "c", 1.0)
     topo.add_node("c", "route")
     topo.add_dependency("c", "a", 1.0)
-    
+
     with pytest.raises(ValueError, match="仿真拓扑结构中存在循环调用"):
         StateEvolutionPipeline(entities, topo, clock, bus)
 
 
 def test_pipeline_empty_topology_raises_error():
-    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=UTC))
     bus = EventBus()
     topo = Topology()
-    
+
     with pytest.raises(ValueError, match="仿真拓扑结构为空"):
         StateEvolutionPipeline({}, topo, clock, bus)
 
+
 def test_pipeline_dynamic_error_rate():
-    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=UTC))
     bus = EventBus()
     gw = ServiceEntity("gateway", "Gateway", seed=42)
     payment = ServiceEntity("payment", "PaymentService", seed=42)
     entities = {"gateway": gw, "payment": payment}
-    
+
     topo = Topology()
     topo.add_node("gateway", "route")
     topo.add_dependency("gateway", "payment", 1.0)
     topo.add_node("payment", "route")
-    
+
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
-    
+
     # 故障注入：Payment 工作线程挂满，触发 TIMEOUT
     payment.resources.active_workers = 10
     payment.resources.max_workers = 10
-    
+
     pipeline.run_tick(ingress_qps=1.0)
-    
+
     # 由于 Payment 产生 TIMEOUT 错误，payment 的 derived_metrics()["error_rate"] 应该变成 1.0 (100% 失败)
     assert payment.derived_metrics()["error_rate"] == 1.0
 
+
 def test_pipeline_span_duration_calculation():
-    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=UTC))
     bus = EventBus()
-    
+
     gw = ServiceEntity("gateway", "Gateway", seed=42)
     order = ServiceEntity("order", "OrderService", seed=42)
     user = ServiceEntity("user", "UserService", seed=42)
-    
-    gw.resources.request_queue_len = 0   # 基础耗时 5ms
-    order.resources.request_queue_len = 2 # 基础耗时 5 + 2*20 = 45ms
+
+    gw.resources.request_queue_len = 0  # 基础耗时 5ms
+    order.resources.request_queue_len = 2  # 基础耗时 5 + 2*20 = 45ms
     user.resources.request_queue_len = 0  # 基础耗时 5ms
-    
+
     entities = {"gateway": gw, "order": order, "user": user}
-    
+
     topo = Topology()
-    topo.add_node("gateway", "fan_out") # 并行扇出调用 order 与 user
+    topo.add_node("gateway", "fan_out")  # 并行扇出调用 order 与 user
     topo.add_dependency("gateway", "order", 1.0)
     topo.add_dependency("gateway", "user", 1.0)
     topo.add_node("order", "route")
     topo.add_node("user", "route")
-    
+
     finished_traces = []
     bus.subscribe(EventType.TRACE_FINISHED, lambda e: finished_traces.append(e.payload["request"]))
-    
+
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
     pipeline.run_tick(ingress_qps=1.0)
-    
+
     assert len(finished_traces) == 1
     root = finished_traces[0].root_span
     # fan_out 模式下，gateway duration 应该为 self(5ms) + max(order: 45ms, user: 5ms) = 50ms
     order_span = next(c for c in root.children if c.service == "order")
     user_span = next(c for c in root.children if c.service == "user")
-    
+
     assert order_span.duration == 45.0
     assert user_span.duration == 5.0
     assert root.duration == 50.0
 
+
 def test_pipeline_sub_integer_qps_sampling():
     from datetime import timedelta
+
     # 步长 1.0s
-    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc), timedelta(seconds=1.0))
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=UTC), timedelta(seconds=1.0))
     bus = EventBus()
-    
+
     gw = ServiceEntity("gateway", "Gateway", seed=42)
     entities = {"gateway": gw}
     topo = Topology()
     topo.add_node("gateway", "route")
-    
+
     finished_traces = []
     bus.subscribe(EventType.TRACE_FINISHED, lambda e: finished_traces.append(e.payload["request"]))
-    
+
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
-    
+
     # 当 ingress_qps = 0.0 时，不应该生成任何 Request
     pipeline.run_tick(ingress_qps=0.0)
     assert len(finished_traces) == 0
-    
+
     # 当 ingress_qps = 0.1 时，跑 100 个 tick 应该平均生成 ~10 个 Request (远少于 100)
     for _ in range(100):
         pipeline.run_tick(ingress_qps=0.1)
-    
+
     assert 1 <= len(finished_traces) <= 30
-
-
-

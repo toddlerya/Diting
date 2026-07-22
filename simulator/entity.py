@@ -1,14 +1,23 @@
 import random
-from typing import Dict, Optional, List, Union
+
 from pydantic import BaseModel
-from simulator.schema import BaseResource, ServiceResource, InfraResource
+
+from simulator.schema import BaseResource, InfraResource, ServiceResource
+
 
 class Entity:
     """
     仿真实体基类。
     用于代表仿真系统中的各种物理或逻辑组件（如服务、数据库等），并持有其基础资源指标。
     """
-    def __init__(self, entity_id: str, name: str, seed: int = 42, resources: Optional[Union[BaseResource, Dict]] = None):
+
+    def __init__(
+        self,
+        entity_id: str,
+        name: str,
+        seed: int = 42,
+        resources: BaseResource | dict | None = None,
+    ):
         """
         初始化实体。
 
@@ -30,7 +39,7 @@ class Entity:
         return self._resources
 
     @resources.setter
-    def resources(self, val: Union[BaseResource, Dict]):
+    def resources(self, val: BaseResource | dict):
         if isinstance(val, BaseResource):
             self._resources = val
         elif isinstance(val, dict):
@@ -38,7 +47,7 @@ class Entity:
         else:
             self._resources = val
 
-    def derived_metrics(self) -> Dict[str, float]:
+    def derived_metrics(self) -> dict[str, float]:
         """
         根据底层资源计算并返回派生监控指标。
         基类提供空实现，子类应重写以返回特定的指标。
@@ -48,12 +57,20 @@ class Entity:
         """
         return {}
 
+
 class ServiceEntity(Entity):
     """
     微服务实体。
     模拟一个运行的微服务实例，可根据资源消耗计算服务的 CPU 使用率、请求延迟等衍生指标。
     """
-    def __init__(self, entity_id: str, name: str, seed: int = 42, resources: Optional[Union[ServiceResource, Dict]] = None):
+
+    def __init__(
+        self,
+        entity_id: str,
+        name: str,
+        seed: int = 42,
+        resources: ServiceResource | dict | None = None,
+    ):
         super().__init__(entity_id, name, seed, resources)
         self.last_error_rate: float = 0.0
         if not isinstance(self._resources, ServiceResource):
@@ -69,7 +86,7 @@ class ServiceEntity(Entity):
         return self._resources  # type: ignore
 
     @resources.setter
-    def resources(self, val: Union[ServiceResource, Dict]):
+    def resources(self, val: ServiceResource | dict):
         if isinstance(val, ServiceResource):
             self._resources = val
         elif isinstance(val, dict):
@@ -77,7 +94,7 @@ class ServiceEntity(Entity):
         else:
             self._resources = val
 
-    def derived_metrics(self) -> Dict[str, float]:
+    def derived_metrics(self) -> dict[str, float]:
         """
         计算并返回微服务的派生监控指标（CPU 使用率、服务响应延迟、错误率等）。
 
@@ -95,27 +112,31 @@ class ServiceEntity(Entity):
         heap_used = res.heap_used_mb
         max_heap = res.max_heap_mb if res.max_heap_mb > 0 else 1.0
         queue_len = res.request_queue_len
-        
+
         # 物理衍生公式计算 CPU (带白噪声)
         base_cpu = (active_workers / max_workers) * 80 + (heap_used / max_heap) * 15 + queue_len * 2
         noise = self.random_gen.uniform(-2.0, 2.0)
         cpu = max(0.0, min(100.0, base_cpu + noise))
-        
+
         # 物理衍生公式计算 Latency (ms)
         base_latency = 5.0 + queue_len * 20.0
-        
-        return {
-            "cpu_usage": cpu,
-            "latency": base_latency,
-            "error_rate": self.last_error_rate
-        }
+
+        return {"cpu_usage": cpu, "latency": base_latency, "error_rate": self.last_error_rate}
+
 
 class InfraEntity(Entity):
     """
     基础设施实体。
     模拟诸如 Redis 缓存池、数据库连接池等底层资源，可计算资源利用率指标。
     """
-    def __init__(self, entity_id: str, name: str, seed: int = 42, resources: Optional[Union[InfraResource, Dict]] = None):
+
+    def __init__(
+        self,
+        entity_id: str,
+        name: str,
+        seed: int = 42,
+        resources: InfraResource | dict | None = None,
+    ):
         super().__init__(entity_id, name, seed, resources)
         if not isinstance(self._resources, InfraResource):
             if isinstance(self._resources, BaseModel):
@@ -130,7 +151,7 @@ class InfraEntity(Entity):
         return self._resources  # type: ignore
 
     @resources.setter
-    def resources(self, val: Union[InfraResource, Dict]):
+    def resources(self, val: InfraResource | dict):
         if isinstance(val, InfraResource):
             self._resources = val
         elif isinstance(val, dict):
@@ -138,7 +159,7 @@ class InfraEntity(Entity):
         else:
             self._resources = val
 
-    def derived_metrics(self) -> Dict[str, float]:
+    def derived_metrics(self) -> dict[str, float]:
         """
         计算并返回基础设施的利用率指标。
 
@@ -149,20 +170,20 @@ class InfraEntity(Entity):
         used = res.used
         capacity = res.capacity if res.capacity > 0 else 1.0
         util = (used / capacity) * 100
-        return {
-            "utilization": util
-        }
+        return {"utilization": util}
+
 
 class Topology:
     """
     系统拓扑结构。
     用于管理服务实体之间的调用网络和依赖权重，并决定请求在服务之间的传播方式。
     """
+
     def __init__(self):
         """初始化拓扑结构，构建空节点表和空依赖边表。"""
-        self.nodes: Dict[str, dict] = {}
-        self.edges: Dict[str, Dict[str, float]] = {}
-        
+        self.nodes: dict[str, dict] = {}
+        self.edges: dict[str, dict[str, float]] = {}
+
     def add_node(self, entity_id: str, node_type: str = "fan_out"):
         """
         添加一个拓扑节点（实体）。
@@ -175,7 +196,7 @@ class Topology:
         self.nodes[entity_id] = {"type": node_type}
         if entity_id not in self.edges:
             self.edges[entity_id] = {}
-            
+
     def add_dependency(self, upstream: str, downstream: str, weight: float):
         """
         添加一条服务调用依赖边。
@@ -189,9 +210,9 @@ class Topology:
             self.edges[upstream] = {}
         self.edges[upstream][downstream] = weight
         if upstream not in self.nodes:
-            self.nodes[upstream] = {"type": "fan_out"} # 默认并行扇出
-            
-    def get_downstream_weights(self, entity_id: str) -> Dict[str, float]:
+            self.nodes[upstream] = {"type": "fan_out"}  # 默认并行扇出
+
+    def get_downstream_weights(self, entity_id: str) -> dict[str, float]:
         """
         获取指定实体的所有下游依赖服务及对应的调用权重。
 
@@ -206,7 +227,7 @@ class Topology:
     def validate(self):
         """
         验证拓扑结构的合法性，必须是非空的有向无环图 (DAG)。
-        
+
         Raises:
             ValueError: 如果拓扑为空或存在循环依赖（环路）。
         """
@@ -232,5 +253,6 @@ class Topology:
         for node in self.nodes:
             if visited.get(node, 0) == 0:
                 if has_cycle(node):
-                    raise ValueError("仿真拓扑结构中存在循环调用（环路），必须为有向无环图（DAG）！")
-
+                    raise ValueError(
+                        "仿真拓扑结构中存在循环调用（环路），必须为有向无环图（DAG）！"
+                    )

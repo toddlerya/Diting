@@ -1,28 +1,28 @@
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import yaml
 
 from simulator.clock import SimulationClock
 from simulator.entity import Entity
-from simulator.event_bus import BaseEvent, EventBus, EventType, EventSeverity
+from simulator.event_bus import BaseEvent, EventBus, EventSeverity, EventType
 from simulator.schema import RetryPolicyConfig
 
 
 class Scenario:
-    def __init__(self, name: str, description: str, steps: List[Dict[str, Any]], seed: int = 42):
+    def __init__(self, name: str, description: str, steps: list[dict[str, Any]], seed: int = 42):
         self.name = name
         self.description = description
         self.steps = steps
         self.seed = seed
 
     @classmethod
-    def from_yaml(cls, filepath: str) -> 'Scenario':
+    def from_yaml(cls, filepath: str) -> "Scenario":
         """
         从 YAML 文件加载故障剧本，并解析 nested include 关系
         """
         path = Path(filepath).resolve()
-        with path.open('r', encoding='utf-8') as f:
+        with path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         steps = []
@@ -59,13 +59,21 @@ class Scenario:
             name=data.get("name", ""),
             description=data.get("description", ""),
             steps=steps,
-            seed=data.get("seed", 42)
+            seed=data.get("seed", 42),
         )
 
-    def apply(self, tick: int, entities: Dict[str, Entity], bus: EventBus, clock: SimulationClock, session_id: str = "default"):
+    def apply(
+        self,
+        tick: int,
+        entities: dict[str, Entity],
+        bus: EventBus,
+        clock: SimulationClock,
+        session_id: str = "default",
+    ):
         """
         在特定的 Tick 下执行当前剧本声明的所有故障注入和状态变更
         """
+
         def replace_session_id(val: Any) -> Any:
             if isinstance(val, dict):
                 return {k: replace_session_id(v) for k, v in val.items()}
@@ -93,7 +101,11 @@ class Scenario:
                         if parts[1] == "resources" and len(parts) == 3:
                             resource_key = parts[2]
                             if resource_key == "retry_policy" and isinstance(value, dict):
-                                setattr(entity.resources, resource_key, RetryPolicyConfig.model_validate(value))
+                                setattr(
+                                    entity.resources,
+                                    resource_key,
+                                    RetryPolicyConfig.model_validate(value),
+                                )
                             else:
                                 setattr(entity.resources, resource_key, value)
                         else:
@@ -112,13 +124,15 @@ class Scenario:
                 # 生成确定性的 event_id
                 event_id = f"evt_s_{tick}_{entity_id}_{event_type}_{hash(str(payload)) % 10000}"
 
-                bus.publish(BaseEvent(
-                    event_id=event_id,
-                    tick=tick,
-                    timestamp=clock.now(),
-                    entity_id=entity_id,
-                    severity=severity,
-                    event_type=event_type,
-                    payload=payload,
-                    trace_id=trace_id
-                ))
+                bus.publish(
+                    BaseEvent(
+                        event_id=event_id,
+                        tick=tick,
+                        timestamp=clock.now(),
+                        entity_id=entity_id,
+                        severity=severity,
+                        event_type=event_type,
+                        payload=payload,
+                        trace_id=trace_id,
+                    )
+                )

@@ -1,11 +1,10 @@
 import random
 import uuid
 from enum import Enum
-from typing import Dict, List, Optional
 
 from simulator.clock import SimulationClock
 from simulator.entity import Entity, InfraEntity, ServiceEntity, Topology
-from simulator.event_bus import BaseEvent, EventBus, EventType, EventSeverity
+from simulator.event_bus import BaseEvent, EventBus, EventSeverity, EventType
 
 
 class SpanStatus(str, Enum):
@@ -13,13 +12,14 @@ class SpanStatus(str, Enum):
     Span 节点的状态枚举。
     继承 str 以保证与标准字符串比较及序列化的兼容性。
     """
+
     OK = "OK"
     TIMEOUT = "TIMEOUT"
     ERROR = "ERROR"
 
 
 class SpanNode:
-    def __init__(self, span_id: str, parent_span_id: Optional[str], service: str):
+    def __init__(self, span_id: str, parent_span_id: str | None, service: str):
         self.span_id = span_id
         self.parent_span_id = parent_span_id
         self.service = service
@@ -27,16 +27,19 @@ class SpanNode:
         self.duration = 0.0
         self.retry_count = 0
         self.error_message = ""
-        self.children: List['SpanNode'] = []
+        self.children: list[SpanNode] = []
+
 
 class Request:
     def __init__(self, trace_id: str, root_span: SpanNode):
         self.trace_id = trace_id
         self.root_span = root_span
 
+
 class StateEvolutionPipeline:
-    def __init__(self, entities: Dict[str, Entity], topology: Topology,
-                 clock: SimulationClock, bus: EventBus):
+    def __init__(
+        self, entities: dict[str, Entity], topology: Topology, clock: SimulationClock, bus: EventBus
+    ):
         self.entities = entities
         self.topology = topology
         self.clock = clock
@@ -86,7 +89,7 @@ class StateEvolutionPipeline:
             rand_val = entry_entity.random_gen.random() if entry_entity else random.random()
             req_count = 1 if rand_val < ingress_qps else 0
 
-        span_stats: Dict[str, dict] = {}
+        span_stats: dict[str, dict] = {}
         for _ in range(req_count):
             trace_id = f"tr_{uuid.uuid4().hex[:8]}"
             root_span = self._build_span_tree(entry_point, None)
@@ -99,20 +102,22 @@ class StateEvolutionPipeline:
             self._collect_span_stats(root_span, span_stats)
 
             # 3. 投递 Trace 结束事件发往总线，加入 session_id 以进行会话隔离
-            self.bus.publish(BaseEvent(
-                event_id=f"evt_{uuid.uuid4().hex[:8]}",
-                tick=tick,
-                timestamp=now,
-                entity_id=entry_point,
-                severity=EventSeverity.INFO,
-                event_type=EventType.TRACE_FINISHED,
-                payload={"session_id": session_id, "request": request}
-            ))
+            self.bus.publish(
+                BaseEvent(
+                    event_id=f"evt_{uuid.uuid4().hex[:8]}",
+                    tick=tick,
+                    timestamp=now,
+                    entity_id=entry_point,
+                    severity=EventSeverity.INFO,
+                    event_type=EventType.TRACE_FINISHED,
+                    payload={"session_id": session_id, "request": request},
+                )
+            )
 
         # 更新各 ServiceEntity 的动态错误率指标
         self._update_error_rates(span_stats)
 
-    def _collect_span_stats(self, span: SpanNode, stats: Dict[str, dict]):
+    def _collect_span_stats(self, span: SpanNode, stats: dict[str, dict]):
         if span.service not in stats:
             stats[span.service] = {"total": 0, "failed": 0}
         stats[span.service]["total"] += 1
@@ -121,7 +126,7 @@ class StateEvolutionPipeline:
         for child in span.children:
             self._collect_span_stats(child, stats)
 
-    def _update_error_rates(self, span_stats: Dict[str, dict]):
+    def _update_error_rates(self, span_stats: dict[str, dict]):
         for entity_id, entity in self.entities.items():
             if isinstance(entity, ServiceEntity):
                 stat = span_stats.get(entity_id)
@@ -130,7 +135,7 @@ class StateEvolutionPipeline:
                 else:
                     entity.last_error_rate = 0.0
 
-    def _build_span_tree(self, service: str, parent_span_id: Optional[str]) -> SpanNode:
+    def _build_span_tree(self, service: str, parent_span_id: str | None) -> SpanNode:
         """
         根据拓扑依赖图递归构建调用的 Span 树结构骨架。
 
@@ -184,7 +189,7 @@ class StateEvolutionPipeline:
         评估逻辑：
         1. 节点自检 (资源上限判定):
            - InfraEntity (如 Redis/DB 连接池): 若当前使用量 >= 最大容量，标记为 TIMEOUT 超时。
-           - ServiceEntity (微服务实例): 
+           - ServiceEntity (微服务实例):
              - 若工作线程数 >= 最大线程数，标记为 TIMEOUT (线程池耗尽)。
              - 若堆内存使用 >= 最大堆内存，标记为 ERROR (内存溢出 OOM)。
 
@@ -208,7 +213,9 @@ class StateEvolutionPipeline:
             capacity = entity.resources.capacity
             if capacity > 0 and used >= capacity:
                 node.status = SpanStatus.TIMEOUT
-                node.error_message = f"{entity.name} resource capacity exhausted ({used}/{capacity})"
+                node.error_message = (
+                    f"{entity.name} resource capacity exhausted ({used}/{capacity})"
+                )
         elif isinstance(entity, ServiceEntity):
             res = entity.resources
             active_workers = res.active_workers
@@ -218,10 +225,14 @@ class StateEvolutionPipeline:
 
             if active_workers >= max_workers:
                 node.status = SpanStatus.TIMEOUT
-                node.error_message = f"{entity.name} thread pool exhausted ({active_workers}/{max_workers})"
+                node.error_message = (
+                    f"{entity.name} thread pool exhausted ({active_workers}/{max_workers})"
+                )
             elif heap_used >= max_heap:
                 node.status = SpanStatus.ERROR
-                node.error_message = f"{entity.name} Out Of Memory (OOM) ({heap_used}MB/{max_heap}MB)"
+                node.error_message = (
+                    f"{entity.name} Out Of Memory (OOM) ({heap_used}MB/{max_heap}MB)"
+                )
 
         # 2. 递归判定子 Span 节点，自底向上流转并处理重试
         if node.children:
@@ -258,7 +269,9 @@ class StateEvolutionPipeline:
                     if not success:
                         # 达到最大重试次数后仍全部失败，将失败状态向父节点传播
                         node.status = child.status
-                        node.error_message = f"Dependency {child.service} failed after {max_attempts} attempts"
+                        node.error_message = (
+                            f"Dependency {child.service} failed after {max_attempts} attempts"
+                        )
                 else:
                     resolved_children.append(child)
                     # 未开启重试时，直接将下游子节点的失败状态向父节点传播
@@ -284,10 +297,9 @@ class StateEvolutionPipeline:
         if node.children:
             if node_type == "fan_out":
                 children_duration = max(child.duration for child in node.children)
-            else: # route
+            else:  # route
                 children_duration = sum(child.duration for child in node.children)
         else:
             children_duration = 0.0
 
         node.duration = self_duration + children_duration
-

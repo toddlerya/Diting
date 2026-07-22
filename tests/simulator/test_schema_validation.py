@@ -1,10 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from simulator.entity import ServiceEntity, InfraEntity
+
+from simulator.entity import InfraEntity, ServiceEntity
 from simulator.environment import load_environment
 from simulator.schema import (
-    BaseResource,
-    EnvironmentConfig,
     InfraResource,
     RetryPolicyConfig,
     ServiceResource,
@@ -62,7 +61,8 @@ def test_entity_resource_auto_coercion():
 def test_invalid_yaml_schema(tmp_path):
     # 构造非法 YAML 文件 (如 active_workers 为负数)
     invalid_yaml = tmp_path / "invalid_env.yaml"
-    invalid_yaml.write_text("""
+    invalid_yaml.write_text(
+        """
 entities:
   order:
     class: "ServiceEntity"
@@ -70,7 +70,9 @@ entities:
     resources:
       active_workers: -5
       max_workers: 10
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
     with pytest.raises(ValidationError):
         load_environment(str(invalid_yaml))

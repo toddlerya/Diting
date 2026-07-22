@@ -1,36 +1,50 @@
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Callable, Dict, List, Union
+
 
 class EventType(str, Enum):
     """
     仿真事件类型常量枚举。
     继承 str 以保证与标准字符串比较及序列化的兼容性。
     """
+
     TRACE_FINISHED = "TraceFinishedEvent"
     GENERIC = "Generic"
     RESOURCE_EXHAUSTED = "ResourceExhausted"
     METRIC_THRESHOLD_EXCEEDED = "MetricThresholdExceeded"
     METRIC_THRESHOLD_RECOVERED = "MetricThresholdRecovered"
 
+
 class EventSeverity(str, Enum):
     """
     仿真事件严重程度常量枚举。
     继承 str 以保证与标准字符串比较及序列化的兼容性。
     """
+
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
+
 
 class BaseEvent:
     """
     仿真事件基类。
     用于封装仿真过程中产生的各类事件的通用属性。
     """
-    def __init__(self, event_id: str, tick: int, timestamp: datetime, 
-                 entity_id: str, severity: Union[EventSeverity, str], event_type: Union[EventType, str], 
-                 payload: dict, trace_id: Optional[str] = None):
+
+    def __init__(
+        self,
+        event_id: str,
+        tick: int,
+        timestamp: datetime,
+        entity_id: str,
+        severity: EventSeverity | str,
+        event_type: EventType | str,
+        payload: dict,
+        trace_id: str | None = None,
+    ):
         """
         初始化基础事件。
 
@@ -53,16 +67,18 @@ class BaseEvent:
         self.payload = payload
         self.trace_id = trace_id
 
+
 class EventBus:
     """
     事件总线类。
     用于管理仿真系统中的事件订阅（Subscribe）与事件发布（Publish），实现组件间解耦。
     """
+
     def __init__(self):
         """初始化事件总线，构建空的订阅关系表。"""
-        self._subscribers: Dict[str, List[Callable]] = {}
-        
-    def subscribe(self, event_type: Union[EventType, str], callback: Callable):
+        self._subscribers: dict[str, list[Callable]] = {}
+
+    def subscribe(self, event_type: EventType | str, callback: Callable):
         """
         订阅指定类型的事件。
 
@@ -73,7 +89,7 @@ class EventBus:
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
         self._subscribers[event_type].append(callback)
-        
+
     def publish(self, event: BaseEvent):
         """
         发布事件，广播通知所有订阅了该事件类型的回调处理函数。
