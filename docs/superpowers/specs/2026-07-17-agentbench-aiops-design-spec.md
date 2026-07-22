@@ -84,7 +84,10 @@ class SimulationClock:
   * `HostEntity`: 虚拟机/宿主机物理节点。
 * **物理资源 (Resources)**: Entity 内存只存放实际的物理资源。我们采用“逻辑级等效代替物理竞争”的极简计算模型。
 * **资源上限行为与可观测信号映射表**:
-  
+
+> [!NOTE]
+> 📝 **TODO (仿真链路与场景丰富计划)**：目前资源上限与异常行为判定保持基础骨架支持。待 Agent 模块实现并跑通主流程后，再来进一步丰富更复杂的场景和仿真链路（如 503 排队溢出、GC 与 CPU 联动、磁盘 IO 异常及多服务共享底座连接动态汇总等）。
+
   | 物理资源 (Resource) | 承载宿主 | 达到上限后的行为 (Behavior on Max Limit) | 可观测性信号特征 (Signals seen by Agent) |
   | :--- | :--- | :--- | :--- |
   | **Worker Threads (工作线程)** | `Service` | 触发排队 -> 排队长度 `queue_len` 增加 -> 超过 max_queue 时**直接丢弃请求 (503 Service Unavailable)**。 | Metric: QPS 跌落，503 报错率飙升；Log: `Queue full, dropping request`。 |
