@@ -55,6 +55,7 @@ class ServiceEntity(Entity):
     """
     def __init__(self, entity_id: str, name: str, seed: int = 42, resources: Optional[Union[ServiceResource, Dict]] = None):
         super().__init__(entity_id, name, seed, resources)
+        self.last_error_rate: float = 0.0
         if not isinstance(self._resources, ServiceResource):
             if isinstance(self._resources, BaseModel):
                 self._resources = ServiceResource.model_validate(self._resources.model_dump())
@@ -83,6 +84,7 @@ class ServiceEntity(Entity):
         计算逻辑：
         1. cpu_usage：通过工作线程使用率、堆内存占用率、请求队列长度综合计算，并加入白噪声。
         2. latency：主要由请求队列等待长度决定。
+        3. error_rate：由管道（Pipeline）推演统计的当前 Tick 实际错误率。
 
         Returns:
             Dict[str, float]: 包含 'cpu_usage'、'latency' 和 'error_rate' 的字典。
@@ -105,7 +107,7 @@ class ServiceEntity(Entity):
         return {
             "cpu_usage": cpu,
             "latency": base_latency,
-            "error_rate": 0.0
+            "error_rate": self.last_error_rate
         }
 
 class InfraEntity(Entity):

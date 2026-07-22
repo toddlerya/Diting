@@ -74,6 +74,7 @@ class StateEvolutionPipeline:
         # 根据 QPS 决定本 Tick 处理的 Request 数量 (最少生成 1 个以供 TDD 验证)
         req_count = max(1, int(ingress_qps))
 
+        span_stats: Dict[str, dict] = {}
         for _ in range(req_count):
             trace_id = f"tr_{uuid.uuid4().hex[:8]}"
             root_span = self._build_span_tree(entry_point, None)
@@ -81,6 +82,9 @@ class StateEvolutionPipeline:
 
             # 2. 模拟依赖判定与故障自底向上级联流转
             self._evaluate_span_node(root_span)
+
+            # 统计当前请求中各个服务节点的 Span 状态
+            self._collect_span_stats(root_span, span_stats)
 
             # 3. 投递 Trace 结束事件发往总线，加入 session_id 以进行会话隔离
             self.bus.publish(BaseEvent(
@@ -92,6 +96,27 @@ class StateEvolutionPipeline:
                 event_type=EventType.TRACE_FINISHED,
                 payload={"session_id": session_id, "request": request}
             ))
+
+        # 更新各 ServiceEntity 的动态错误率指标
+        self._update_error_rates(span_stats)
+
+    def _collect_span_stats(self, span: SpanNode, stats: Dict[str, dict]):
+        if span.service not in stats:
+            stats[span.service] = {"total": 0, "failed": 0}
+        stats[span.service]["total"] += 1
+        if span.status != SpanStatus.OK:
+            stats[span.service]["failed"] += 1
+        for child in span.children:
+            self._collect_span_stats(child, stats)
+
+    def _update_error_rates(self, span_stats: Dict[str, dict]):
+        for entity_id, entity in self.entities.items():
+            if isinstance(entity, ServiceEntity):
+                stat = span_stats.get(entity_id)
+                if stat and stat["total"] > 0:
+                    entity.last_error_rate = stat["failed"] / stat["total"]
+                else:
+                    entity.last_error_rate = 0.0
 
     def _build_span_tree(self, service: str, parent_span_id: Optional[str]) -> SpanNode:
         """

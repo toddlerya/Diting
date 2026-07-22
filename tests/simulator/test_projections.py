@@ -116,3 +116,34 @@ def test_trace_projection_alignment():
     traces = trace_proj.query_traces("sess_trace", real_now)
     assert len(traces) == 1
     assert traces[0]["timestamp"] == real_now.isoformat()
+
+def test_metric_projection_auto_sampling():
+    from simulator.entity import ServiceEntity
+    bus = EventBus()
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    clock.current_tick = 5
+    
+    gw = ServiceEntity("gateway", "Gateway", seed=42)
+    gw.resources.active_workers = 5
+    entities = {"gateway": gw}
+    
+    metric_proj = MetricProjection(bus, clock, entities=entities)
+    
+    # 发布 TRACE_FINISHED 事件
+    root = SpanNode("sp_1", None, "gateway")
+    request = Request("tr_test_1", root)
+    bus.publish(BaseEvent(
+        event_id="e_trace",
+        tick=5,
+        timestamp=clock.now(),
+        entity_id="gateway",
+        severity="INFO",
+        event_type=EventType.TRACE_FINISHED,
+        payload={"session_id": "sess_auto", "request": request}
+    ))
+    
+    real_now = datetime(2026, 7, 17, 14, 0, 0, tzinfo=timezone.utc)
+    cpus = metric_proj.query_metric("sess_auto", "gateway_cpu_usage", 0, 10, real_now)
+    assert len(cpus) == 1
+    assert cpus[0]["value"] > 0
+

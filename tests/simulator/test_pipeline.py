@@ -117,3 +117,27 @@ def test_pipeline_empty_topology_raises_error():
     with pytest.raises(ValueError, match="仿真拓扑结构为空"):
         StateEvolutionPipeline({}, topo, clock, bus)
 
+def test_pipeline_dynamic_error_rate():
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    bus = EventBus()
+    gw = ServiceEntity("gateway", "Gateway", seed=42)
+    payment = ServiceEntity("payment", "PaymentService", seed=42)
+    entities = {"gateway": gw, "payment": payment}
+    
+    topo = Topology()
+    topo.add_node("gateway", "route")
+    topo.add_dependency("gateway", "payment", 1.0)
+    topo.add_node("payment", "route")
+    
+    pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
+    
+    # 故障注入：Payment 工作线程挂满，触发 TIMEOUT
+    payment.resources.active_workers = 10
+    payment.resources.max_workers = 10
+    
+    pipeline.run_tick(ingress_qps=1.0)
+    
+    # 由于 Payment 产生 TIMEOUT 错误，payment 的 derived_metrics()["error_rate"] 应该变成 1.0 (100% 失败)
+    assert payment.derived_metrics()["error_rate"] == 1.0
+
+

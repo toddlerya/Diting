@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 from simulator.projections.base import BaseProjection
-from simulator.event_bus import EventBus
+from simulator.event_bus import EventBus, EventType, BaseEvent
 from simulator.clock import SimulationClock
+from simulator.entity import Entity
 
 class MetricProjection(BaseProjection):
     """
@@ -10,11 +11,32 @@ class MetricProjection(BaseProjection):
     负责在每个 Tick 周期内，将所有实体产生的物理性能数值记录、汇总，并按会话隔离缓存，
     以提供标准的 Prometheus 范围时序查询接口。
     """
-    def __init__(self, bus: EventBus, clock: SimulationClock):
+    def __init__(self, bus: EventBus, clock: SimulationClock, entities: Optional[Dict[str, Entity]] = None):
         super().__init__(bus, clock)
         # 共享内存缓存数据库：session_id -> metric_name -> list of points
         # 数据点格式：{"tick": int, "value": float}
         self.metrics_db: Dict[str, Dict[str, List[dict]]] = {}
+        self.entities: Optional[Dict[str, Entity]] = None
+        if entities is not None:
+            self.bind_entities(entities)
+        
+        # 自动订阅 Trace 结束事件流式提取指标数据
+        self.bus.subscribe(EventType.TRACE_FINISHED, self._handle_trace_finished)
+
+    def bind_entities(self, entities: Dict[str, Entity]):
+        """绑定要监控和录入指标的实体字典。"""
+        self.entities = entities
+
+    def _handle_trace_finished(self, event: BaseEvent):
+        """当 Request/Trace 演进完成时，自动流式采样录入所有实体的派生指标。"""
+        if not self.entities:
+            return
+        session_id = event.payload.get("session_id", "default")
+        for s_id, entity in self.entities.items():
+            metrics = entity.derived_metrics()
+            for metric_name, val in metrics.items():
+                if isinstance(val, (int, float)):
+                    self.record_metric(session_id, f"{s_id}_{metric_name}", event.tick, float(val))
     
     def record_metric(self, session_id: str, metric_name: str, tick: int, value: float):
         """

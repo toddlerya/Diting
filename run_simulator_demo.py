@@ -46,23 +46,8 @@ def main():
     env_path = current_dir / "simulator" / "environments" / "default_env.yaml"
     entities, topo = load_environment(str(env_path))
 
-    # 订阅 Finished Trace 以同步录入 metrics 投影
-    def sync_projections(event):
-        session_id = event.payload.get("session_id", DEMO_SESSION)
-        # 记录各组件的派生指标
-        for s_id, entity in entities.items():
-            metrics = entity.derived_metrics()
-            if metrics:
-                # 记录微服务指标 (CPU / Latency)
-                if "cpu_usage" in metrics:
-                    metric_proj.record_metric(session_id, f"{s_id}_cpu_usage", event.tick, metrics["cpu_usage"])
-                if "latency" in metrics:
-                    metric_proj.record_metric(session_id, f"{s_id}_latency", event.tick, metrics["latency"])
-                # 记录基础设施指标 (Utilization)
-                if "utilization" in metrics:
-                    metric_proj.record_metric(session_id, f"{s_id}_utilization", event.tick, metrics["utilization"])
-
-    bus.subscribe(EventType.TRACE_FINISHED, sync_projections)
+    # 4. 绑定实体至 MetricProjection 实现指标自动采样录入
+    metric_proj.bind_entities(entities)
 
     # 4. 创建演进流水线并加载剧本
     pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
