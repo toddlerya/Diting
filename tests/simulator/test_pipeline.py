@@ -140,4 +140,68 @@ def test_pipeline_dynamic_error_rate():
     # 由于 Payment 产生 TIMEOUT 错误，payment 的 derived_metrics()["error_rate"] 应该变成 1.0 (100% 失败)
     assert payment.derived_metrics()["error_rate"] == 1.0
 
+def test_pipeline_span_duration_calculation():
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc))
+    bus = EventBus()
+    
+    gw = ServiceEntity("gateway", "Gateway", seed=42)
+    order = ServiceEntity("order", "OrderService", seed=42)
+    user = ServiceEntity("user", "UserService", seed=42)
+    
+    gw.resources.request_queue_len = 0   # 基础耗时 5ms
+    order.resources.request_queue_len = 2 # 基础耗时 5 + 2*20 = 45ms
+    user.resources.request_queue_len = 0  # 基础耗时 5ms
+    
+    entities = {"gateway": gw, "order": order, "user": user}
+    
+    topo = Topology()
+    topo.add_node("gateway", "fan_out") # 并行扇出调用 order 与 user
+    topo.add_dependency("gateway", "order", 1.0)
+    topo.add_dependency("gateway", "user", 1.0)
+    topo.add_node("order", "route")
+    topo.add_node("user", "route")
+    
+    finished_traces = []
+    bus.subscribe(EventType.TRACE_FINISHED, lambda e: finished_traces.append(e.payload["request"]))
+    
+    pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
+    pipeline.run_tick(ingress_qps=1.0)
+    
+    assert len(finished_traces) == 1
+    root = finished_traces[0].root_span
+    # fan_out 模式下，gateway duration 应该为 self(5ms) + max(order: 45ms, user: 5ms) = 50ms
+    order_span = next(c for c in root.children if c.service == "order")
+    user_span = next(c for c in root.children if c.service == "user")
+    
+    assert order_span.duration == 45.0
+    assert user_span.duration == 5.0
+    assert root.duration == 50.0
+
+def test_pipeline_sub_integer_qps_sampling():
+    from datetime import timedelta
+    # 步长 1.0s
+    clock = SimulationClock(datetime(2026, 7, 17, 9, 0, 0, tzinfo=timezone.utc), timedelta(seconds=1.0))
+    bus = EventBus()
+    
+    gw = ServiceEntity("gateway", "Gateway", seed=42)
+    entities = {"gateway": gw}
+    topo = Topology()
+    topo.add_node("gateway", "route")
+    
+    finished_traces = []
+    bus.subscribe(EventType.TRACE_FINISHED, lambda e: finished_traces.append(e.payload["request"]))
+    
+    pipeline = StateEvolutionPipeline(entities, topo, clock, bus)
+    
+    # 当 ingress_qps = 0.0 时，不应该生成任何 Request
+    pipeline.run_tick(ingress_qps=0.0)
+    assert len(finished_traces) == 0
+    
+    # 当 ingress_qps = 0.1 时，跑 100 个 tick 应该平均生成 ~10 个 Request (远少于 100)
+    for _ in range(100):
+        pipeline.run_tick(ingress_qps=0.1)
+    
+    assert 1 <= len(finished_traces) <= 30
+
+
 

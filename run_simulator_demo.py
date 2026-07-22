@@ -101,7 +101,7 @@ def main():
         pre = "  " * indent
         retry_flag = f" [Attempt #{span.retry_count + 1}]" if span.retry_count > 0 else ""
         color = "\033[31m" if span.status != "OK" else "\033[32m"
-        print(f"{pre}└─ {span.service}{retry_flag} -> Status: {color}{span.status}\033[0m {span.error_message}")
+        print(f"{pre}└─ {span.service}{retry_flag} -> Status: {color}{span.status}\033[0m [Duration: {span.duration:.1f}ms] {span.error_message}")
         for child in span.children:
             print_span(child, indent + 2)
 

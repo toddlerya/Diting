@@ -69,10 +69,22 @@ class StateEvolutionPipeline:
 
         # 动态获取当前拓扑的入口服务节点
         entry_point = self._find_entry_point()
+        entry_entity = self.entities.get(entry_point)
 
-        # 1. 模拟生成请求与 Span 树骨架 (以 entry_point 为入口)
-        # 根据 QPS 决定本 Tick 处理的 Request 数量 (最少生成 1 个以供 TDD 验证)
-        req_count = max(1, int(ingress_qps))
+        # 结合亚整数 QPS 与整数 QPS 确定性概率抽样
+        if ingress_qps <= 0.0:
+            req_count = 0
+        elif ingress_qps >= 1.0:
+            req_count = int(ingress_qps)
+            remainder = ingress_qps - req_count
+            if remainder > 0:
+                rand_val = entry_entity.random_gen.random() if entry_entity else random.random()
+                if rand_val < remainder:
+                    req_count += 1
+        else:
+            # 0.0 < ingress_qps < 1.0 亚整数逻辑
+            rand_val = entry_entity.random_gen.random() if entry_entity else random.random()
+            req_count = 1 if rand_val < ingress_qps else 0
 
         span_stats: Dict[str, dict] = {}
         for _ in range(req_count):
@@ -255,4 +267,27 @@ class StateEvolutionPipeline:
                         node.error_message = child.error_message
 
             node.children = resolved_children
+
+        # 3. 计算节点自身耗时与下游子节点耗时聚合
+        if node.status != SpanStatus.OK:
+            self_duration = 500.0
+        elif isinstance(entity, ServiceEntity):
+            self_duration = float(entity.derived_metrics().get("latency", 5.0))
+        elif isinstance(entity, InfraEntity):
+            self_duration = 1.0
+        else:
+            self_duration = 5.0
+
+        node_config = self.topology.nodes.get(node.service, {})
+        node_type = node_config.get("type", "fan_out")
+
+        if node.children:
+            if node_type == "fan_out":
+                children_duration = max(child.duration for child in node.children)
+            else: # route
+                children_duration = sum(child.duration for child in node.children)
+        else:
+            children_duration = 0.0
+
+        node.duration = self_duration + children_duration
 
