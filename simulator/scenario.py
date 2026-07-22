@@ -5,7 +5,7 @@ import yaml
 
 from simulator.clock import SimulationClock
 from simulator.entity import Entity
-from simulator.event_bus import BaseEvent, EventBus, EventType
+from simulator.event_bus import BaseEvent, EventBus, EventType, EventSeverity
 from simulator.schema import RetryPolicyConfig
 
 
@@ -104,7 +104,7 @@ class Scenario:
             if "event" in step:
                 evt_cfg = step["event"]
                 entity_id = evt_cfg.get("entity_id", "")
-                severity = evt_cfg.get("severity", "INFO")
+                severity = evt_cfg.get("severity", EventSeverity.INFO)
                 event_type = evt_cfg.get("event_type", EventType.GENERIC)
                 payload = replace_session_id(evt_cfg.get("payload", {}))
                 trace_id = evt_cfg.get("trace_id")

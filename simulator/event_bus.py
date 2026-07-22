@@ -13,13 +13,23 @@ class EventType(str, Enum):
     METRIC_THRESHOLD_EXCEEDED = "MetricThresholdExceeded"
     METRIC_THRESHOLD_RECOVERED = "MetricThresholdRecovered"
 
+class EventSeverity(str, Enum):
+    """
+    仿真事件严重程度常量枚举。
+    继承 str 以保证与标准字符串比较及序列化的兼容性。
+    """
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
 class BaseEvent:
     """
     仿真事件基类。
     用于封装仿真过程中产生的各类事件的通用属性。
     """
     def __init__(self, event_id: str, tick: int, timestamp: datetime, 
-                 entity_id: str, severity: str, event_type: Union[EventType, str], 
+                 entity_id: str, severity: Union[EventSeverity, str], event_type: Union[EventType, str], 
                  payload: dict, trace_id: Optional[str] = None):
         """
         初始化基础事件。
@@ -29,8 +39,8 @@ class BaseEvent:
             tick (int): 事件发生时的仿真步数。
             timestamp (datetime): 事件发生的仿真虚拟时间戳。
             entity_id (str): 触发事件的仿真实体ID。
-            severity (str): 事件严重程度。
-            event_type (str): 事件类型，用于 EventBus 订阅和分发。
+            severity (Union[EventSeverity, str]): 事件严重程度。
+            event_type (Union[EventType, str]): 事件类型，用于 EventBus 订阅和分发。
             payload (dict): 事件所携带的业务数据负载。
             trace_id (Optional[str], optional): 调用链追踪ID。默认为 None。
         """

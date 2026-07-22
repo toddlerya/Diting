@@ -1,13 +1,18 @@
 import random
 import uuid
+from enum import Enum
 from typing import Dict, List, Optional
 
 from simulator.clock import SimulationClock
 from simulator.entity import Entity, InfraEntity, ServiceEntity, Topology
-from simulator.event_bus import BaseEvent, EventBus, EventType
+from simulator.event_bus import BaseEvent, EventBus, EventType, EventSeverity
 
 
-class SpanStatus:
+class SpanStatus(str, Enum):
+    """
+    Span 节点的状态枚举。
+    继承 str 以保证与标准字符串比较及序列化的兼容性。
+    """
     OK = "OK"
     TIMEOUT = "TIMEOUT"
     ERROR = "ERROR"
@@ -83,7 +88,7 @@ class StateEvolutionPipeline:
                 tick=tick,
                 timestamp=now,
                 entity_id=entry_point,
-                severity="INFO",
+                severity=EventSeverity.INFO,
                 event_type=EventType.TRACE_FINISHED,
                 payload={"session_id": session_id, "request": request}
             ))
