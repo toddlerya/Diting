@@ -77,6 +77,12 @@ class SimulationClock:
      $$T_{\text{event}}(i) = T_{\text{real\_now}} - (N - i) \times \text{step\_duration}$$
   这使得所有投影层数据在时间轴上永远**紧贴当前物理时间的前端**，确保 MCP 客户端相对时间查询 100% 完美命中。
 
+* **UTC 标准时区强制规范 (+00:00 ISO 8601)**:
+  所有投影层导出及 State Server API 时间戳统一指定使用 `timezone.utc` 并生成 ISO 8601 带 `+00:00` 后缀的时间字符串。考量点包括：
+  1. **Prometheus / OTel / Loki 工业标准对齐**：标准监控 API 强制要求 UTC。
+  2. **跨部署机器评测确定性**：消除不同宿主机系统本地时区（CST/PST/CET）对 Benchmark 结果的影响。
+  3. **LLM Agent 防幻觉与精确推理**：显式 RFC 3339 时区标记防止大模型推算相对时间段时混淆本地时间与 UTC 产生 8 小时偏移。
+
 ### 2.2 实体抽象与依赖拓扑 (Entity & Topology)
 * **Entity 抽象**: 所有的物理单元、逻辑服务、硬件组件均为 `Entity`。
   * `ServiceEntity`: 微服务组件（Gateway, OrderService, PaymentService, UserService 等）。

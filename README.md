@@ -121,6 +121,12 @@ graph TD
 `Update Request` -> `Update Queue` -> `Update Resource` -> `Update Dependency` -> `Update Metrics` -> `Generate Events`。
 可以在几毫秒内推演完数小时的系统演变，极利于高速 Benchmark 评测。
 
+> [!NOTE]
+> 🌐 **UTC 标准时区 (+00:00) 设计考量**：所有投影层导出及 State Server API 格式化的 ISO 8601 时间戳均统一携带 `+00:00` 后缀（UTC 标准时间）。
+> 1. **对齐工业标准**：Prometheus, Loki 与 OpenTelemetry 全行业规范均强制使用 UTC。
+> 2. **跨机器评测一致性**：确保相同的 Benchmark 剧本在不同国家/机器（如北京 CST 或美西 PST 节点）上运行出的数据完全一致。
+> 3. **消除 LLM 幻觉**：显式时区标记（RFC 3339）可防范 LLM Agent 在推理 PromQL 相对时间范围（如过去 5 分钟）时产生 8 小时偏差。
+
 ### 3. DDD 投影层与多进程数据共享 (Projections & State API)
 在 discrete simulation 模式下，所有时序指标、日志、Trace 均离线推演并以 `session_id` 绑定存储在共享内存中。
 为了支持多进程隔离及 MCP Server（独立进程）与仿真引擎的数据共享，Diting 启动一个轻量级的 **In-Memory State HTTP API Server**，屏蔽了物理磁盘 I/O 和 SQLite 锁冲突。各 MCP Server 均通过标准 HTTP 请求向仿真端拉取数据：
