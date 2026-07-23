@@ -72,4 +72,19 @@ def search_runbooks(session_id: str, query_term: str, top_k: int = 3) -> list[di
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Knowledge MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport mode (stdio/sse)",
+    )
+    parser.add_argument("--port", type=int, default=8004, help="Port for SSE server")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host for SSE server")
+    args = parser.parse_args()
+
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+    mcp.run(transport=args.transport)

@@ -45,4 +45,19 @@ def search_traces(session_id: str, min_duration_ms: float = 0.0) -> list[dict[st
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Trace MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport mode (stdio/sse)",
+    )
+    parser.add_argument("--port", type=int, default=8003, help="Port for SSE server")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host for SSE server")
+    args = parser.parse_args()
+
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+    mcp.run(transport=args.transport)

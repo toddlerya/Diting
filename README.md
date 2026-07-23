@@ -135,7 +135,40 @@ graph TD
 * **Trace Projection**：聚合分布式调用的 Span 事件，供 Trace MCP 查询全链路响应分布。
 * **Alertmanager Projection**：在指标越线时投影为 `Firing Alert`，在故障消解或系统自愈后投递 `Resolved Alert` 并填入 `endsAt` 时间戳，完整仿真告警生命周期，以支持评估 Agent 在告警中途恢复时的策略变通能力。
 
-### 4. LangGraph Multi-Agent 黑板协同诊断流
+### 4. 标准 MCP 服务与启动规范 (MCP Servers)
+Diting 基于 [FastMCP](https://github.com/jlowin/fastmcp) 实现了标准的 MCP (Model Context Protocol) 协议服务（位于 `mcp/` 目录）：
+* **Prometheus MCP Server** (`mcp.prometheus_server`): 暴露时序指标查询（`query_range`, `query_instant`, `list_metrics`）与 Alertmanager 告警查询（`get_alerts`）。
+* **Loki MCP Server** (`mcp.loki_server`): 暴露日志查询（`query_logs`, `list_services`）。
+* **Trace MCP Server** (`mcp.trace_server`): 暴露 OpenTelemetry/Tempo 链路深度查询（`search_traces`, `get_trace`）。
+* **Knowledge MCP Server** (`mcp.knowledge_server`): 基于 BM25 算法检索运维 Wiki 与 Runbook 指南（`search_runbooks`）。
+
+#### 🚀 启动与使用指南
+1. **前置条件**：需先拉起底层 State Server（提供物理推演与监控数据）：
+   ```bash
+   uv run python run_simulator_demo.py
+   # 或
+   uv run uvicorn simulator.state_server:app --port 8000
+   ```
+2. **标准 STDIO 模式（推荐，供 Agent/LLM 客户端集成）**：
+   ```bash
+   uv run python -m mcp.prometheus_server
+   uv run python -m mcp.loki_server
+   uv run python -m mcp.trace_server
+   uv run python -m mcp.knowledge_server
+   ```
+3. **SSE (HTTP) 端口服务模式**：
+   ```bash
+   uv run python -m mcp.prometheus_server --transport sse --port 8001
+   uv run python -m mcp.loki_server --transport sse --port 8002
+   uv run python -m mcp.trace_server --transport sse --port 8003
+   uv run python -m mcp.knowledge_server --transport sse --port 8004
+   ```
+4. **MCP Inspector 可视化调试**：
+   ```bash
+   npx @modelcontextprotocol/inspector uv run python -m mcp.prometheus_server
+   ```
+
+### 5. LangGraph Multi-Agent 黑板协同诊断流
 使用 LangGraph 状态图构建 **多轮黑板协作（Blackboard Collaboration Loop）** 排查工作流，深度展现状态控制力：
 * **排查白板 (Blackboard State)**：State 中维护会话级排查上下文（如 `suspect_entities` 可疑实体、时间范围、轮次）。各 Agent 通过协作黑板进行信息流转。
 * **职责隔离与多轮循迹**：
@@ -144,7 +177,7 @@ graph TD
 * **Wiki RAG 降噪定位**：`Knowledge Agent` 基于关键词去混杂了 **90% 干扰运维Wiki** 的知识库中进行降噪检索，匹配并筛选正确的故障 Runbook。
 * **决策网关与推导**：`Correlation / Diagnosis Agent` 充当决策门，自动评估白板数据是否闭环，流向最终的根因结构化推导与 HTML 报告输出。
 
-### 5. 混合评估引擎 (Hybrid Evaluator)
+### 6. 混合评估引擎 (Hybrid Evaluator)
 不仅对比 Root Cause 是否正确。结合 LangFuse 全链路 Trace，评估：
 * **Root Cause 准确率**（根因定位）
 * **调查路径召回率 (Path Recall)**（是否调用了不相关的 Tool，是否排查了无关的 Service）

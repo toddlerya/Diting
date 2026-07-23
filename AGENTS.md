@@ -70,7 +70,14 @@ uv run pytest
 
 # 运行 FastAPI 状态服务器
 uv run uvicorn simulator.state_server:app --port 8000
+
+# 运行 MCP 服务 (STDIO 标准模式)
+uv run python -m mcp.prometheus_server
+
+# 运行 MCP 服务 (SSE 端口模式)
+uv run python -m mcp.prometheus_server --transport sse --port 8001
 ```
+
 
 ---
 
