@@ -25,7 +25,11 @@ def _load_documents() -> list[dict[str, Any]]:
                 "path": str(filepath),
                 "title": title,
                 "content": content,
-                "tokens": content.lower().replace("(", " ").replace(")", " ").split(),
+                "tokens": content.lower()
+                .replace("(", " ")
+                .replace(")", " ")
+                .replace("_", " ")
+                .split(),
             }
         )
     return docs
@@ -39,7 +43,7 @@ def search_runbooks_engine(query_term: str, top_k: int = 3) -> list[dict[str, An
     corpus = [doc["tokens"] for doc in docs]
     bm25 = BM25Okapi(corpus)
 
-    query_tokens = query_term.lower().replace("(", " ").replace(")", " ").split()
+    query_tokens = query_term.lower().replace("(", " ").replace(")", " ").replace("_", " ").split()
     scores = bm25.get_scores(query_tokens)
 
     scored_docs = []

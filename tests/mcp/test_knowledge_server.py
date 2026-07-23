@@ -12,3 +12,15 @@ def test_bm25_search_recall_under_noise():
     oom_results = search_runbooks_engine("OutOfMemoryError Java heap space", top_k=3)
     assert len(oom_results) > 0
     assert oom_results[0]["filename"] == "service_oom.md"
+
+
+def test_bm25_search_underscore_identifiers():
+    # 验证下划线连接的标识符 query (如 redis_pool_leak) 经分词后能匹配文档
+    underscore_query_results = search_runbooks_engine("redis_pool_leak", top_k=3)
+    assert len(underscore_query_results) > 0
+    assert underscore_query_results[0]["filename"] == "redis_pool_leak.md"
+
+    # 验证查询下划线指标名 redis_active_connections 也能正确识别
+    metric_query_results = search_runbooks_engine("redis_active_connections", top_k=3)
+    assert len(metric_query_results) > 0
+    assert metric_query_results[0]["filename"] == "redis_pool_leak.md"
