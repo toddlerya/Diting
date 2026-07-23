@@ -55,6 +55,9 @@ class StateClient:
             params["real_now"] = real_now
         return self._request("GET", "/api/v1/metrics", params=params)
 
+    def get_metric_names(self, session_id: str) -> list[str]:
+        return self._request("GET", "/api/v1/metrics/names", params={"session_id": session_id})
+
     def get_logs(
         self,
         session_id: str,
@@ -66,6 +69,9 @@ class StateClient:
         if real_now:
             params["real_now"] = real_now
         return self._request("GET", "/api/v1/logs", params=params)
+
+    def get_log_services(self, session_id: str) -> list[str]:
+        return self._request("GET", "/api/v1/logs/services", params={"session_id": session_id})
 
     def get_traces(self, session_id: str, real_now: str | None = None) -> list[dict[str, Any]]:
         params = {"session_id": session_id}

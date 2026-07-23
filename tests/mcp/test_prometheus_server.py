@@ -1,6 +1,11 @@
 import httpx
 
-from mcp.prometheus_server import get_alerts_tool, query_instant_tool, query_range_tool
+from mcp.prometheus_server import (
+    get_alerts_tool,
+    list_metrics_tool,
+    query_instant_tool,
+    query_range_tool,
+)
 from mcp.state_client import StateClient
 
 
@@ -14,6 +19,8 @@ def test_prometheus_mcp_tools():
                     {"timestamp": "2026-07-23T00:00:01+00:00", "value": 85.0},
                 ],
             )
+        elif request.url.path == "/api/v1/metrics/names":
+            return httpx.Response(200, json=["gateway_cpu_usage", "redis_utilization"])
         elif request.url.path == "/api/v1/alerts":
             return httpx.Response(
                 200, json=[{"status": "firing", "labels": {"alertname": "HighLatency"}}]
@@ -26,6 +33,10 @@ def test_prometheus_mcp_tools():
 
     instant_res = query_instant_tool("s1", "gateway_cpu_usage", client=client)
     assert instant_res["value"] == 85.0
+
+    metrics_list = list_metrics_tool("s1", client=client)
+    assert "gateway_cpu_usage" in metrics_list
+    assert "redis_utilization" in metrics_list
 
     alerts_res = get_alerts_tool("s1", "firing", client=client)
     assert len(alerts_res) == 1

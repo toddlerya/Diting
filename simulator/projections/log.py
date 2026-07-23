@@ -70,3 +70,8 @@ class LogProjection(BaseProjection):
             results.append(noise_line)
 
         return results
+
+    def list_services(self, session_id: str) -> list[str]:
+        """获取特定 session_id 下已记录日志的所有微服务名称清单。"""
+        session_logs = self.logs_db.get(session_id, [])
+        return list({log["service"] for log in session_logs if "service" in log})

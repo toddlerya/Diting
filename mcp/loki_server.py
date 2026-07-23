@@ -14,16 +14,7 @@ def query_logs_tool(
 
 def list_services_tool(session_id: str, client: StateClient | None = None) -> list[str]:
     c = client or _default_client
-    logs = c.get_logs(session_id, service="*", level="*")
-    services = set()
-    for log in logs:
-        parts = log.split(" ")
-        for part in parts:
-            if part.endswith(":"):
-                srv = part.rstrip(":").strip()
-                if srv and not srv.startswith("["):
-                    services.add(srv)
-    return list(services)
+    return c.get_log_services(session_id)
 
 
 @mcp.tool()

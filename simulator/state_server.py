@@ -45,10 +45,18 @@ def create_app(
         t_now = _get_session_anchor(session_id, real_now)
         return metric_proj.query_metric(session_id, metric, start_tick, end_tick, t_now)
 
+    @app.get("/api/v1/metrics/names")
+    def get_metric_names(session_id: str):
+        return metric_proj.list_metrics(session_id)
+
     @app.get("/api/v1/logs")
     def get_logs(session_id: str, service: str, level: str = "ERROR", real_now: str | None = None):
         t_now = _get_session_anchor(session_id, real_now)
         return log_proj.query_logs(session_id, service, level, t_now)
+
+    @app.get("/api/v1/logs/services")
+    def get_log_services(session_id: str):
+        return log_proj.list_services(session_id)
 
     @app.get("/api/v1/traces")
     def get_traces(session_id: str, real_now: str | None = None):

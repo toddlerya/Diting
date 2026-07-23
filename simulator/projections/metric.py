@@ -66,3 +66,8 @@ class MetricProjection(BaseProjection):
                 aligned_time = self.aligner.align_timestamp(pt["tick"], real_now)
                 results.append({"timestamp": aligned_time.isoformat(), "value": pt["value"]})
         return results
+
+    def list_metrics(self, session_id: str) -> list[str]:
+        """获取特定 session_id 下已采样的所有指标名称清单。"""
+        session_metrics = self.metrics_db.get(session_id, {})
+        return list(session_metrics.keys())

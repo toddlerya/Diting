@@ -30,8 +30,7 @@ def query_instant_tool(
 
 def list_metrics_tool(session_id: str, client: StateClient | None = None) -> list[str]:
     c = client or _default_client
-    pts = c.get_metrics(session_id, "*", start_tick=0, end_tick=999999)
-    return list({p.get("metric_name", "") for p in pts if "metric_name" in p})
+    return c.get_metric_names(session_id)
 
 
 def get_alerts_tool(

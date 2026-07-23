@@ -13,6 +13,8 @@ def test_loki_mcp_query_logs():
                     "[2026-07-23T00:00:00+00:00] [ERROR] [trace_id: tr_123] PaymentService: Failed due to Redis timeout"
                 ],
             )
+        elif request.url.path == "/api/v1/logs/services":
+            return httpx.Response(200, json=["PaymentService", "OrderService"])
         return httpx.Response(404)
 
     client = StateClient(transport=httpx.MockTransport(handler))
