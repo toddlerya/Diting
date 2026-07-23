@@ -1,4 +1,3 @@
-import pytest
 from mcp.knowledge_server import search_runbooks_engine
 
 

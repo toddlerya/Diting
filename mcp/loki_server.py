@@ -1,4 +1,3 @@
-from typing import List, Optional
 from mcp.server.fastmcp import FastMCP
 from mcp.state_client import StateClient
 
@@ -7,13 +6,13 @@ _default_client = StateClient()
 
 
 def query_logs_tool(
-    session_id: str, service: str, level: str = "ERROR", client: Optional[StateClient] = None
-) -> List[str]:
+    session_id: str, service: str, level: str = "ERROR", client: StateClient | None = None
+) -> list[str]:
     c = client or _default_client
     return c.get_logs(session_id, service, level)
 
 
-def list_services_tool(session_id: str, client: Optional[StateClient] = None) -> List[str]:
+def list_services_tool(session_id: str, client: StateClient | None = None) -> list[str]:
     c = client or _default_client
     logs = c.get_logs(session_id, service="*", level="*")
     services = set()
@@ -28,13 +27,13 @@ def list_services_tool(session_id: str, client: Optional[StateClient] = None) ->
 
 
 @mcp.tool()
-def query_logs(session_id: str, service: str, level: str = "ERROR") -> List[str]:
+def query_logs(session_id: str, service: str, level: str = "ERROR") -> list[str]:
     """Query Loki logs for a specific service and severity level."""
     return query_logs_tool(session_id, service, level)
 
 
 @mcp.tool()
-def list_services(session_id: str) -> List[str]:
+def list_services(session_id: str) -> list[str]:
     """List services that have recorded logs in the session."""
     return list_services_tool(session_id)
 

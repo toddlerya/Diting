@@ -1,12 +1,15 @@
 import httpx
 import pytest
+
 from mcp.state_client import StateClient
 
 
 def test_state_client_success():
     def handler(request: httpx.Request):
         if request.url.path == "/api/v1/metrics":
-            return httpx.Response(200, json=[{"timestamp": "2026-07-23T00:00:00+00:00", "value": 42.0}])
+            return httpx.Response(
+                200, json=[{"timestamp": "2026-07-23T00:00:00+00:00", "value": 42.0}]
+            )
         elif request.url.path == "/api/v1/session":
             return httpx.Response(200, json={"status": "cleared", "session_id": "s1"})
         elif request.url.path == "/api/v1/logs":

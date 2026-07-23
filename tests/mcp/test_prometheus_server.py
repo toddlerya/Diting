@@ -1,5 +1,5 @@
 import httpx
-import pytest
+
 from mcp.prometheus_server import get_alerts_tool, query_instant_tool, query_range_tool
 from mcp.state_client import StateClient
 

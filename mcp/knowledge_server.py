@@ -1,14 +1,16 @@
 from pathlib import Path
-from typing import Any, Dict, List
-from mcp.server.fastmcp import FastMCP
+from typing import Any
+
 from rank_bm25 import BM25Okapi
+
+from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("Knowledge MCP Server")
 
 KNOWLEDGE_BASE_DIR = Path(__file__).resolve().parent / "knowledge_base"
 
 
-def _load_documents() -> List[Dict[str, Any]]:
+def _load_documents() -> list[dict[str, Any]]:
     docs = []
     if not KNOWLEDGE_BASE_DIR.exists():
         return docs
@@ -29,7 +31,7 @@ def _load_documents() -> List[Dict[str, Any]]:
     return docs
 
 
-def search_runbooks_engine(query_term: str, top_k: int = 3) -> List[Dict[str, Any]]:
+def search_runbooks_engine(query_term: str, top_k: int = 3) -> list[dict[str, Any]]:
     docs = _load_documents()
     if not docs:
         return []
@@ -58,7 +60,7 @@ def search_runbooks_engine(query_term: str, top_k: int = 3) -> List[Dict[str, An
 
 
 @mcp.tool()
-def search_runbooks(session_id: str, query_term: str, top_k: int = 3) -> List[Dict[str, Any]]:
+def search_runbooks(session_id: str, query_term: str, top_k: int = 3) -> list[dict[str, Any]]:
     """
     Search operational runbooks and troubleshooting guides using BM25 text relevance.
     """

@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import httpx
 
 
@@ -12,18 +13,16 @@ class StateClient:
         self,
         base_url: str = "http://127.0.0.1:8000",
         timeout: float = 5.0,
-        transport: Optional[httpx.BaseTransport] = None,
+        transport: httpx.BaseTransport | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.transport = transport
 
     def _get_client(self) -> httpx.Client:
-        return httpx.Client(
-            base_url=self.base_url, timeout=self.timeout, transport=self.transport
-        )
+        return httpx.Client(base_url=self.base_url, timeout=self.timeout, transport=self.transport)
 
-    def _request(self, method: str, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    def _request(self, method: str, path: str, params: dict[str, Any] | None = None) -> Any:
         try:
             with self._get_client() as client:
                 resp = client.request(method, path, params=params)
@@ -44,8 +43,8 @@ class StateClient:
         metric: str,
         start_tick: int = 0,
         end_tick: int = 100,
-        real_now: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        real_now: str | None = None,
+    ) -> list[dict[str, Any]]:
         params = {
             "session_id": session_id,
             "metric": metric,
@@ -61,28 +60,26 @@ class StateClient:
         session_id: str,
         service: str,
         level: str = "ERROR",
-        real_now: Optional[str] = None,
-    ) -> List[str]:
+        real_now: str | None = None,
+    ) -> list[str]:
         params = {"session_id": session_id, "service": service, "level": level}
         if real_now:
             params["real_now"] = real_now
         return self._request("GET", "/api/v1/logs", params=params)
 
-    def get_traces(
-        self, session_id: str, real_now: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    def get_traces(self, session_id: str, real_now: str | None = None) -> list[dict[str, Any]]:
         params = {"session_id": session_id}
         if real_now:
             params["real_now"] = real_now
         return self._request("GET", "/api/v1/traces", params=params)
 
     def get_alerts(
-        self, session_id: str, status: str = "firing", real_now: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, session_id: str, status: str = "firing", real_now: str | None = None
+    ) -> list[dict[str, Any]]:
         params = {"session_id": session_id, "status": status}
         if real_now:
             params["real_now"] = real_now
         return self._request("GET", "/api/v1/alerts", params=params)
 
-    def delete_session(self, session_id: str) -> Dict[str, Any]:
+    def delete_session(self, session_id: str) -> dict[str, Any]:
         return self._request("DELETE", "/api/v1/session", params={"session_id": session_id})

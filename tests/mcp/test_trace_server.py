@@ -1,5 +1,5 @@
 import httpx
-import pytest
+
 from mcp.state_client import StateClient
 from mcp.trace_server import get_trace_tool, search_traces_tool
 
@@ -20,9 +20,7 @@ def test_trace_mcp_tools():
         {
             "trace_id": "tr_002",
             "timestamp": "2026-07-23T00:00:01+00:00",
-            "request": {
-                "root_span": {"service": "Gateway", "duration": 10.0, "status": "OK"}
-            },
+            "request": {"root_span": {"service": "Gateway", "duration": 10.0, "status": "OK"}},
         },
     ]
 

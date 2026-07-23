@@ -1,5 +1,5 @@
 import httpx
-import pytest
+
 from mcp.loki_server import list_services_tool, query_logs_tool
 from mcp.state_client import StateClient
 
