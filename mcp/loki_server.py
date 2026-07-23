@@ -1,3 +1,5 @@
+import argparse
+
 from mcp.server.fastmcp import FastMCP
 from mcp.state_client import StateClient
 
@@ -29,18 +31,23 @@ def list_services(session_id: str) -> list[str]:
     return list_services_tool(session_id)
 
 
-if __name__ == "__main__":
-    import argparse
-
+def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Loki MCP Server")
     parser.add_argument(
         "--transport",
-        choices=["stdio", "sse"],
+        choices=["stdio", "streamable-http"],
         default="stdio",
-        help="Transport mode (stdio/sse)",
+        help="Transport mode (stdio/streamable-http)",
     )
-    parser.add_argument("--port", type=int, default=8002, help="Port for SSE server")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host for SSE server")
+    parser.add_argument("--port", type=int, default=8002, help="Port for Streamable HTTP server")
+    parser.add_argument(
+        "--host", type=str, default="127.0.0.1", help="Host for Streamable HTTP server"
+    )
+    return parser
+
+
+if __name__ == "__main__":
+    parser = create_parser()
     args = parser.parse_args()
 
     mcp.settings.host = args.host

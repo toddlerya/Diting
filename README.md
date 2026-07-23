@@ -156,12 +156,12 @@ Diting 基于 [FastMCP](https://github.com/jlowin/fastmcp) 实现了标准的 MC
    uv run python -m mcp.trace_server
    uv run python -m mcp.knowledge_server
    ```
-3. **SSE (HTTP) 端口服务模式**：
+3. **Streamable HTTP 端口服务模式**：
    ```bash
-   uv run python -m mcp.prometheus_server --transport sse --port 8001
-   uv run python -m mcp.loki_server --transport sse --port 8002
-   uv run python -m mcp.trace_server --transport sse --port 8003
-   uv run python -m mcp.knowledge_server --transport sse --port 8004
+   uv run python -m mcp.prometheus_server --transport streamable-http --port 8001
+   uv run python -m mcp.loki_server --transport streamable-http --port 8002
+   uv run python -m mcp.trace_server --transport streamable-http --port 8003
+   uv run python -m mcp.knowledge_server --transport streamable-http --port 8004
    ```
 4. **MCP Inspector 可视化调试**：
    ```bash

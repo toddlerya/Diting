@@ -74,8 +74,8 @@ uv run uvicorn simulator.state_server:app --port 8000
 # 运行 MCP 服务 (STDIO 标准模式)
 uv run python -m mcp.prometheus_server
 
-# 运行 MCP 服务 (SSE 端口模式)
-uv run python -m mcp.prometheus_server --transport sse --port 8001
+# 运行 MCP 服务 (Streamable HTTP 端口模式)
+uv run python -m mcp.prometheus_server --transport streamable-http --port 8001
 ```
 
 

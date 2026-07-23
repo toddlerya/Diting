@@ -6,7 +6,7 @@
 
 ### 设计原则
 1. **职责隔离 (Separation of Concerns)**: 分别构建独立的 Prometheus, Loki, Trace, Knowledge MCP Server 进程，为 LangGraph 中的 Metrics, Logs, Trace, Knowledge Agent 提供严格的资源/工具作用域约束。
-2. **官方 SDK 标准对齐**: 基于 Anthropic 官方 Python `mcp` SDK (`FastMCP`) 构建，完全兼容 MCP stdio 与 SSE/HTTP 传输协议。
+2. **官方 SDK 标准对齐**: 基于 Anthropic 官方 Python `mcp` SDK (`FastMCP`) 构建，完全兼容 MCP stdio 与 Streamable HTTP 传输协议。
 3. **零外部重型依赖**: 不依赖真实的 Prometheus/Loki/Jaeger/FAISS 重型集群与向量数据库。数据由 `state_client.py` 向仿真端 `State Server` 拉取，知识库采用纯内存 **`rank-bm25`** 算法进行降噪检索。
 
 ---

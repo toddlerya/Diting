@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 from typing import Any
 
@@ -71,18 +72,23 @@ def search_runbooks(session_id: str, query_term: str, top_k: int = 3) -> list[di
     return search_runbooks_engine(query_term, top_k=top_k)
 
 
-if __name__ == "__main__":
-    import argparse
-
+def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Knowledge MCP Server")
     parser.add_argument(
         "--transport",
-        choices=["stdio", "sse"],
+        choices=["stdio", "streamable-http"],
         default="stdio",
-        help="Transport mode (stdio/sse)",
+        help="Transport mode (stdio/streamable-http)",
     )
-    parser.add_argument("--port", type=int, default=8004, help="Port for SSE server")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host for SSE server")
+    parser.add_argument("--port", type=int, default=8004, help="Port for Streamable HTTP server")
+    parser.add_argument(
+        "--host", type=str, default="127.0.0.1", help="Host for Streamable HTTP server"
+    )
+    return parser
+
+
+if __name__ == "__main__":
+    parser = create_parser()
     args = parser.parse_args()
 
     mcp.settings.host = args.host
