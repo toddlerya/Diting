@@ -1,7 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import time
 
+from mcp.knowledge_server import search_runbooks_engine
+from mcp.loki_server import list_services_tool, query_logs_tool
+from mcp.prometheus_server import get_alerts_tool, query_instant_tool, query_range_tool
+from mcp.state_client import StateClient
+from mcp.trace_server import get_trace_tool, search_traces_tool
 from simulator.clock import SimulationClock
 from simulator.environment import load_environment
 from simulator.event_bus import EventBus
@@ -11,11 +15,6 @@ from simulator.projections.log import LogProjection
 from simulator.projections.metric import MetricProjection
 from simulator.projections.trace import TraceProjection
 from simulator.scenario import Scenario
-from mcp.state_client import StateClient
-from mcp.prometheus_server import query_range_tool, query_instant_tool, get_alerts_tool
-from mcp.loki_server import query_logs_tool, list_services_tool
-from mcp.trace_server import search_traces_tool, get_trace_tool
-from mcp.knowledge_server import search_runbooks_engine
 
 DEMO_SESSION = "mcp_demo_session"
 
@@ -33,7 +32,7 @@ def main():
 
     # 1. 启动仿真引擎并推演场景数据
     print("\033[1;33m[1/4] 启动仿真引擎并推演故障场景 (10 Ticks)... \033[0m")
-    start_time = datetime(2026, 7, 23, 9, 0, 0, tzinfo=timezone.utc)
+    start_time = datetime(2026, 7, 23, 9, 0, 0, tzinfo=UTC)
     clock = SimulationClock(start_time, timedelta(milliseconds=1000))
     bus = EventBus()
 
@@ -59,8 +58,8 @@ def main():
 
     # 2. 构造本地 StateClient (直接关联内存投影层或 HTTP API)
     # 为方便 Demo 演示，我们使用 Mock API 客户端访问，或构造内存通道
-    from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from simulator.state_server import create_app
 
     app = create_app(metric_proj, log_proj, trace_proj, alert_proj)
@@ -125,7 +124,7 @@ def main():
     print("\n\033[1;35m>>> 4. Knowledge MCP Server (rank-bm25 降噪检索) <<<\033[0m")
     kb_results = search_runbooks_engine("Redis connection pool leak", top_k=2)
     print(
-        f"  * search_runbooks('Redis connection pool leak'): 打败 10+ 篇干扰 Wiki，精准召回 Top-1 匹配:"
+        "  * search_runbooks('Redis connection pool leak'): 打败 10+ 篇干扰 Wiki，精准召回 Top-1 匹配:"
     )
     for doc in kb_results:
         print(f"    - [{doc['filename']}] (BM25 Score: {doc['score']:.2f}) - {doc['title']}")
