@@ -1,3 +1,4 @@
+import warnings
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -28,6 +29,7 @@ def print_ascii_banner():
 
 
 def main():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
     print_ascii_banner()
 
     # 1. 启动仿真引擎并推演场景数据
@@ -58,7 +60,9 @@ def main():
 
     # 2. 构造本地 StateClient (直接关联内存投影层或 HTTP API)
     # 为方便 Demo 演示，我们使用 Mock API 客户端访问，或构造内存通道
-    from fastapi.testclient import TestClient
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        from fastapi.testclient import TestClient
 
     from simulator.state_server import create_app
 
