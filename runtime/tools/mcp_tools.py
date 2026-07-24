@@ -34,6 +34,7 @@ DEFAULT_MCP_SERVERS = {
 }
 
 _client_instance: MultiServerMCPClient | None = None
+_tools_map_cache: dict[int, dict[str, BaseTool]] = {}
 
 
 def get_mcp_client(
@@ -48,10 +49,29 @@ def get_mcp_client(
     return _client_instance
 
 
+def reset_mcp_tools_cache() -> None:
+    """重置 MCP Client 与工具映射全局缓存（用于测试隔离）。"""
+    global _client_instance, _tools_map_cache
+    _client_instance = None
+    _tools_map_cache.clear()
+
+
+async def get_cached_mcp_tools_map(
+    client: MultiServerMCPClient | None = None,
+) -> dict[str, BaseTool]:
+    """通过 MultiServerMCPClient 加载并缓存工具映射表（按 client 实例隔离）。"""
+    c = client or get_mcp_client()
+    cid = id(c)
+    if cid not in _tools_map_cache:
+        tools = await c.get_tools()
+        _tools_map_cache[cid] = {t.name: t for t in tools}
+    return _tools_map_cache[cid]
+
+
 async def load_all_mcp_tools(client: MultiServerMCPClient | None = None) -> list[BaseTool]:
     """通过 MultiServerMCPClient 动态加载全部 4 个 MCP 服务的 LangChain 工具集合。"""
-    c = client or get_mcp_client()
-    return await c.get_tools()
+    tool_map = await get_cached_mcp_tools_map(client)
+    return list(tool_map.values())
 
 
 def _parse_mcp_block_result(raw_result: Any) -> Any:
@@ -98,8 +118,7 @@ async def aquery_metrics_tool(
     call_id = tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
     c = client or get_mcp_client()
     try:
-        tools = await c.get_tools()
-        tool_map = {t.name: t for t in tools}
+        tool_map = await get_cached_mcp_tools_map(c)
         if "query_instant" in tool_map:
             raw_res = await tool_map["query_instant"].ainvoke(
                 {"session_id": session_id, "metric_name": query}
@@ -160,8 +179,7 @@ async def aquery_logs_tool(
     call_id = tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
     c = client or get_mcp_client()
     try:
-        tools = await c.get_tools()
-        tool_map = {t.name: t for t in tools}
+        tool_map = await get_cached_mcp_tools_map(c)
         if "query_logs" in tool_map:
             raw_res = await tool_map["query_logs"].ainvoke(
                 {"session_id": session_id, "service": entity_id, "level": "ERROR"}
@@ -231,8 +249,7 @@ async def aquery_trace_tool(
     call_id = tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
     c = client or get_mcp_client()
     try:
-        tools = await c.get_tools()
-        tool_map = {t.name: t for t in tools}
+        tool_map = await get_cached_mcp_tools_map(c)
         if "get_trace" in tool_map:
             raw_res = await tool_map["get_trace"].ainvoke(
                 {"session_id": session_id, "trace_id": trace_id}
@@ -292,8 +309,7 @@ async def aquery_knowledge_tool(
     call_id = tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
     c = client or get_mcp_client()
     try:
-        tools = await c.get_tools()
-        tool_map = {t.name: t for t in tools}
+        tool_map = await get_cached_mcp_tools_map(c)
         if "search_runbooks" in tool_map:
             raw_res = await tool_map["search_runbooks"].ainvoke(
                 {"session_id": session_id, "query_term": query}

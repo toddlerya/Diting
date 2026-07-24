@@ -3,6 +3,7 @@ from typing import Any
 
 from loguru import logger
 
+from runtime.agents.utils import format_evidences_for_prompt
 from runtime.llm import get_llm
 from runtime.mock_llm import MockLLMClient
 from runtime.prompts import SUPERVISOR_PROMPT
@@ -33,7 +34,7 @@ def _invoke_supervisor_llm(state: BlackboardState) -> dict[str, Any] | None:
     try:
         curr_round = state.get("current_round", 1)
         max_rounds = state.get("max_rounds", 5)
-        evidences = [e.model_dump() for e in state.get("evidences", [])]
+        evidences = format_evidences_for_prompt(state.get("evidences", []))
         suspects = state.get("suspect_entities", [])
         alert = state.get("incident_alert", {})
 

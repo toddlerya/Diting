@@ -3,6 +3,7 @@ from typing import Any
 
 from loguru import logger
 
+from runtime.agents.utils import format_evidences_for_prompt
 from runtime.llm import get_llm
 from runtime.prompts import SYNTHESIZER_PROMPT
 from runtime.schema import BlackboardState, DiagnosisReport
@@ -15,7 +16,7 @@ def _invoke_synthesizer_llm(state: BlackboardState) -> DiagnosisReport | None:
 
     try:
         alert = state.get("incident_alert", {})
-        evidences = [e.model_dump() for e in state.get("evidences", [])]
+        evidences = format_evidences_for_prompt(state.get("evidences", []))
         runbooks = state.get("matched_runbooks", [])
 
         user_content = json.dumps(

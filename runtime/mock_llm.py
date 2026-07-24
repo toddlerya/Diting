@@ -8,6 +8,7 @@ class MockLLMClient:
 
     def invoke(self, state: BlackboardState) -> dict[str, Any]:
         curr_round = state.get("current_round", 1)
+        suspects = state.get("suspect_entities", ["order-service"])
         if curr_round == 1:
             return {
                 "next_steps": [
@@ -16,12 +17,15 @@ class MockLLMClient:
                     "TraceNode",
                     "KnowledgeNode",
                 ],
-                "suspect_entities": state.get("suspect_entities", ["order-service"]),
+                "suspect_entities": suspects,
             }
         elif curr_round == 2:
             return {
                 "next_steps": ["LogsNode"],
-                "suspect_entities": ["order-service"],
+                "suspect_entities": suspects,
             }
         else:
-            return {"next_steps": ["Synthesizer"]}
+            return {
+                "next_steps": ["Synthesizer"],
+                "suspect_entities": suspects,
+            }

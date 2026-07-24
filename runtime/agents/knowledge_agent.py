@@ -6,5 +6,8 @@ from runtime.tools.mcp_tools import query_knowledge_tool
 
 def knowledge_node(state: BlackboardState) -> dict[str, Any]:
     ev, msg = query_knowledge_tool(query="High CPU load troubleshooting")
-    runbook_dict = ev.details
-    return {"evidences": [ev], "messages": [msg], "matched_runbooks": [runbook_dict]}
+    runbook_info = {
+        "runbook_id": ev.details.get("runbook_id", "RB-102"),
+        "title": ev.details.get("title", "High CPU Recovery Procedure"),
+    }
+    return {"evidences": [ev], "messages": [msg], "matched_runbooks": [runbook_info]}

@@ -8,6 +8,7 @@ from runtime.tools.mcp_tools import (
     query_logs_tool,
     query_metrics_tool,
     query_trace_tool,
+    reset_mcp_tools_cache,
 )
 
 
@@ -85,3 +86,10 @@ def test_mcp_fallback_on_unreachable_server():
     assert evidence.source == "metric"
     assert evidence.entity_id == "fallback-service"
     assert tool_msg.tool_call_id == "call_fallback"
+
+
+def test_mcp_tools_caching_and_reset():
+    reset_mcp_tools_cache()
+    client = get_mcp_client()
+    assert client is not None
+    reset_mcp_tools_cache()

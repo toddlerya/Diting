@@ -11,8 +11,9 @@ def test_full_diagnosis_workflow():
     assert result["status"] == "COMPLETED"
     assert result["diagnosis_report"] is not None
     assert result["diagnosis_report"].root_cause_entity == "order-service"
-    assert len(result["evidences"]) >= 1
-    assert len(result["matched_runbooks"]) >= 0
+    assert len(result["evidences"]) >= 3
+    assert len(result["matched_runbooks"]) >= 1
+    assert result["matched_runbooks"][0]["runbook_id"] in {"RB-102", "service_oom.md"}
 
 
 def test_graph_structure_compilation():
