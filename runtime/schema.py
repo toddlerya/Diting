@@ -24,6 +24,23 @@ class DiagnosisReport(BaseModel):
     recommended_actions: list[str] = Field(default_factory=list)
 
 
+ValidNodeName = Literal["MetricsNode", "LogsNode", "TraceNode", "KnowledgeNode", "Synthesizer"]
+
+
+class SupervisorDecision(BaseModel):
+    next_steps: list[ValidNodeName] = Field(
+        description="List of exact node names to dispatch. MUST be selected from: 'MetricsNode', 'LogsNode', 'TraceNode', 'KnowledgeNode', 'Synthesizer'."
+    )
+    suspect_entities: list[str] = Field(
+        default_factory=list,
+        description="List of suspect entity IDs identified during investigation.",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Brief rationale for the routing decision.",
+    )
+
+
 class BlackboardState(TypedDict):
     messages: Annotated[list[BaseMessage], operator.add]
     incident_alert: dict

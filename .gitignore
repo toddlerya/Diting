@@ -9,3 +9,4 @@ build/
 uv.lock
 .codegraph
 .superpowers
+.env

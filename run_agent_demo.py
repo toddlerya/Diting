@@ -8,7 +8,7 @@ from runtime.graph import build_diagnosis_graph
 def print_ascii_banner():
     print("""
 \033[1;36m==================================================================
-   谛听 (Diting) - LangGraph Multi-Agent Agent Runtime Demo (Day 5)
+   谛听 (Diting) - LangGraph Multi-Agent Agent Runtime Demo
 ==================================================================\033[0m
     """)
 
@@ -35,6 +35,10 @@ def main():
     print("\033[1;33m[2/3] 执行 LangGraph Multi-Agent Blackboard Diagnosis Workflow... \033[0m")
     thread_id = "demo-incident-session-001"
     graph = build_diagnosis_graph()
+
+    print("===== diagnosis_graph =====")
+    print(graph.get_graph(xray=True).draw_mermaid())
+
     initial_state = {
         "messages": [],
         "incident_alert": alert_event,
