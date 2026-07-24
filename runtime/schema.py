@@ -29,7 +29,7 @@ class BlackboardState(TypedDict):
     incident_alert: dict
     suspect_entities: list[str]
     evidences: Annotated[list[Evidence], operator.add]
-    matched_runbooks: list[dict]
+    matched_runbooks: Annotated[list[dict], operator.add]
     current_round: int
     max_rounds: int
     next_steps: list[str]  # 并发派发节点列表，如 ["MetricsNode", "LogsNode"]

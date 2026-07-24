@@ -118,6 +118,9 @@ def test_knowledge_node_wrapper():
     update = knowledge_node(state)
     assert "evidences" in update
     assert update["evidences"][0].source == "runbook"
+    assert "matched_runbooks" in update
+    assert len(update["matched_runbooks"]) == 1
+    assert update["matched_runbooks"][0]["runbook_id"] == "RB-102"
 
 
 def test_synthesizer_node_wrapper():
