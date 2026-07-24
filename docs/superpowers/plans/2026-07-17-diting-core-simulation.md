@@ -1,6 +1,6 @@
-# Diting Core Simulation Engine Implementation Plan
+# Diting 核心仿真引擎实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **致 Agent 执行者：** 推荐使用 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans` 按 Task 逐项实施本计划。步骤使用复选框 (`- [ ]`) 记录状态。
 
 **Goal:** 构建 Diting 系统状态仿真的核心底座。实现带有 100ms 动态对齐偏移时钟、加权拓扑（Fan-out/Route）随机路径游走、包含错误状态与重试节点的嵌套 Span 链生成、逻辑级物理资源上限（503/Timeout/OOM/IO 异常）、Alertmanager 告警消解（Firing -> Resolved）以及跨进程 In-Memory State HTTP State Server 接口。
 

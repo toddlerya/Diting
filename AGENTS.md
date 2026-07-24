@@ -154,6 +154,9 @@ uv run ruff format --check .
    - **`evaluator/`**: 多维打分与 Ground Truth 校验算法。
    - **`tests/`**: pytest 单元测试。
 
+6. **中文文档规范 (Documentation in Chinese)**
+   - `docs/` 目录下的所有设计说明书 (specs) 与实施计划 (plans) 统一强制使用中文编写。
+
 ---
 
 ## ✅ 开发者与 Agent 提交前验证工作流 (Verification Workflow)

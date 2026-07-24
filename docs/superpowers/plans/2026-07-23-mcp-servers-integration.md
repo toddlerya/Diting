@@ -1,6 +1,6 @@
-# Diting MCP Server Integration Implementation Plan
+# Diting MCP Server 集成实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **致 Agent 执行者：** 推荐使用 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans` 按 Task 逐项实施本计划。步骤使用复选框 (`- [ ]`) 记录状态。
 
 **Goal:** 为 Diting 仿真平台构建标准的 Mock MCP 服务层（包含 Prometheus、Loki、Trace 与基于 BM25 降噪检索的 Knowledge MCP Server）。
 

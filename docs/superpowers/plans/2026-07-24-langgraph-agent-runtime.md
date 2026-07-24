@@ -1,43 +1,43 @@
-# LangGraph Multi-Agent Agent Runtime Implementation Plan
+# LangGraph 多智能体 Agent Runtime 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **致 Agent 执行者：** 推荐使用 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans` 按 Task 逐项实施本计划。步骤使用复选框 (`- [x]`) 记录状态。
 
-**Goal:** Implement the Day 5 `runtime/` module for Diting (谛听), creating a multi-agent blackboard collaboration workflow built on native LangGraph `StateGraph`, Pydantic v2 evidence schemas, parallel fan-out dispatch, and offline Mock LLM support.
+**Goal:** 实现 Diting (谛听) 项目的 `runtime/` 模块，构建基于原生 LangGraph `StateGraph` 的多 Agent 黑板协同诊断工作流，包含 Pydantic v2 证据 Schema、并行扇出派发（Fan-out Dispatch）以及离线 Mock LLM 引擎支持。
 
-**Architecture:** A central Supervisor Agent Node inspects the shared `BlackboardState` and issues parallel tool calls/routing (`next_steps: list[str]`) to Specialist Agent Node Wrappers (Metrics, Logs, Trace, Knowledge). Each Node Wrapper queries its corresponding MCP service, formats raw outputs into concise `Evidence` objects, and appends a `ToolMessage` to maintain message protocol validity. When evidence is complete, the flow transitions to `Synthesizer` to emit a structured `DiagnosisReport`.
+**Architecture:** 由中央 Supervisor Agent 节点检查共享 `BlackboardState` 状态，向各领域 Specialist Agent 节点包装函数（Metrics, Logs, Trace, Knowledge）发出并行工具调用/路由决策（`next_steps: list[str]`）。每个节点包装函数查询对应的 MCP 服务，将原始输出提炼格式化为紧凑的 `Evidence` 对象并追加 `ToolMessage` 以维持消息协议有效性。当证据收集完备时，流程流转至 `Synthesizer` 节点合成并输出结构化的 `DiagnosisReport` 根因诊断报告。
 
 **Tech Stack:** Python 3.13, LangGraph (`langgraph`), LangChain Core (`langchain-core`), Pydantic v2, FastAPI/httpx, Pytest, Ruff.
 
 ## Global Constraints
 
-- **Python Version**: `>= 3.13` (managed via `uv`).
-- **Command Execution**: All Python commands must use `uv run`.
-- **Ruff & Pytest Workflow**: `uv run ruff check --fix .`, `uv run ruff format .`, `uv run pytest`.
-- **Timezone Standard**: ISO 8601 UTC string ending with `+00:00`.
-- **Strict Pydantic Schemas**: All data structures must validate with Pydantic v2.
+- **Python 版本**: `>= 3.13`（通过 `uv` 管理）。
+- **指令执行**: 所有 Python 相关命令必须使用 `uv run` 引导。
+- **代码质量约束**: 严格遵循 Ruff & Pytest 工作流：`uv run ruff check --fix .`、`uv run ruff format .`、`uv run pytest`。
+- **时区标准**: ISO 8601 UTC 时间字符串，显式携带 `+00:00` 后缀。
+- **强类型 Schema**: 所有数据结构必须通过 Pydantic v2 校验。
 
 ---
 
-### Task 1: Dependencies Setup & Environment Verification
+### Task 1: 依赖配置与环境验证
 
 **Files:**
 - Modify: `pyproject.toml`
-- Test: Run `uv sync` and check dependency loading
+- Test: 运行 `uv sync` 并检查依赖加载
 
 **Interfaces:**
 - Consumes: `pyproject.toml`
-- Produces: `langgraph`, `langchain-core`, `langchain-openai` installed in `.venv`
+- Produces: 在 `.venv` 中安装 `langgraph`、`langchain-core`、`langchain-openai`
 
-- [x] **Step 1: Update pyproject.toml with LangGraph & LangChain dependencies**
+- [x] **Step 1: 在 `pyproject.toml` 中添加 LangGraph 与 LangChain 依赖**
 
-Add `"langgraph>=0.2.70"`, `"langchain-core>=0.3.38"`, `"langchain-openai>=0.3.7"` to `pyproject.toml`.
+在 `pyproject.toml` 中添加 `"langgraph>=0.2.70"`、`"langchain-core>=0.3.38"`、`"langchain-openai>=0.3.7"`。
 
-- [x] **Step 2: Sync dependencies with uv**
+- [x] **Step 2: 使用 uv 同步依赖**
 
-Run: `uv sync`
-Expected: Successfully synced dependencies without errors.
+运行：`uv sync`
+预期：成功同步依赖且无报错。
 
-- [x] **Step 3: Commit**
+- [x] **Step 3: 提交 Git**
 
 ```bash
 git add pyproject.toml uv.lock
@@ -46,7 +46,7 @@ git commit -m "build(deps): add langgraph and langchain dependencies for Day 5 r
 
 ---
 
-### Task 2: Pydantic Schemas & BlackboardState Reducer (`runtime/schema.py`)
+### Task 2: Pydantic Schema 与 BlackboardState Reducer (`runtime/schema.py`)
 
 **Files:**
 - Create: `runtime/__init__.py`
@@ -58,7 +58,7 @@ git commit -m "build(deps): add langgraph and langchain dependencies for Day 5 r
 - Consumes: Pydantic v2, `langchain_core.messages.BaseMessage`
 - Produces: `Evidence`, `DiagnosisReport`, `BlackboardState`
 
-- [x] **Step 1: Write failing test for schema and BlackboardState**
+- [x] **Step 1: 编写 Schema 与 BlackboardState 的失败测试**
 
 ```python
 # tests/runtime/test_schema.py
@@ -104,12 +104,12 @@ def test_blackboard_state_initialization():
     assert state["status"] == "RUNNING"
 ```
 
-- [x] **Step 2: Run test to verify it fails**
+- [x] **Step 2: 运行测试验证失败**
 
-Run: `uv run pytest tests/runtime/test_schema.py`
-Expected: FAIL with ModuleNotFoundError or import error for `runtime.schema`.
+运行：`uv run pytest tests/runtime/test_schema.py`
+预期：失败，提示 `ModuleNotFoundError` 或 `runtime.schema` 导入错误。
 
-- [x] **Step 3: Implement runtime/schema.py**
+- [x] **Step 3: 实现 `runtime/schema.py`**
 
 ```python
 # runtime/schema.py
@@ -151,12 +151,12 @@ class BlackboardState(TypedDict):
     status: Literal["RUNNING", "COMPLETED", "FAILED"]
 ```
 
-- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 4: 运行测试验证通过**
 
-Run: `uv run pytest tests/runtime/test_schema.py`
-Expected: PASS.
+运行：`uv run pytest tests/runtime/test_schema.py`
+预期：测试通过。
 
-- [x] **Step 5: Commit**
+- [x] **Step 5: 提交 Git**
 
 ```bash
 git add runtime/schema.py tests/runtime/test_schema.py runtime/__init__.py tests/runtime/__init__.py
@@ -165,7 +165,7 @@ git commit -m "feat(runtime): add BlackboardState and Pydantic Evidence schemas"
 
 ---
 
-### Task 3: MCP Agent Tools Adapter with InjectedToolCallId & ToolMessage (`runtime/tools/mcp_tools.py`)
+### Task 3: MCP Agent 工具适配层 (`runtime/tools/mcp_tools.py`)
 
 **Files:**
 - Create: `runtime/tools/__init__.py`
@@ -173,10 +173,10 @@ git commit -m "feat(runtime): add BlackboardState and Pydantic Evidence schemas"
 - Create: `tests/runtime/test_mcp_tools.py`
 
 **Interfaces:**
-- Consumes: `runtime.schema.Evidence`, MCP server APIs (Prometheus, Loki, Trace, Knowledge)
-- Produces: MCP Tool functions returning `(Evidence, ToolMessage)`
+- Consumes: `runtime.schema.Evidence`, MCP 服务 API (Prometheus, Loki, Trace, Knowledge)
+- Produces: 返回 `(Evidence, ToolMessage)` 元组的 MCP 工具函数
 
-- [x] **Step 1: Write failing test for MCP Agent Tools**
+- [x] **Step 1: 编写 MCP Agent 工具失败测试**
 
 ```python
 # tests/runtime/test_mcp_tools.py
@@ -210,12 +210,12 @@ def test_query_logs_tool_mock():
     assert tool_msg.tool_call_id == "call_456"
 ```
 
-- [x] **Step 2: Run test to verify it fails**
+- [x] **Step 2: 运行测试验证失败**
 
-Run: `uv run pytest tests/runtime/test_mcp_tools.py`
-Expected: FAIL with ModuleNotFoundError or import error for `runtime.tools.mcp_tools`.
+运行：`uv run pytest tests/runtime/test_mcp_tools.py`
+预期：失败，提示 `ModuleNotFoundError` 或 `runtime.tools.mcp_tools` 导入错误。
 
-- [x] **Step 3: Implement runtime/tools/mcp_tools.py**
+- [x] **Step 3: 实现 `runtime/tools/mcp_tools.py`**
 
 ```python
 # runtime/tools/mcp_tools.py
@@ -306,12 +306,12 @@ def query_knowledge_tool(
     return ev, msg
 ```
 
-- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 4: 运行测试验证通过**
 
-Run: `uv run pytest tests/runtime/test_mcp_tools.py`
-Expected: PASS.
+运行：`uv run pytest tests/runtime/test_mcp_tools.py`
+预期：测试通过。
 
-- [x] **Step 5: Commit**
+- [x] **Step 5: 提交 Git**
 
 ```bash
 git add runtime/tools/mcp_tools.py tests/runtime/test_mcp_tools.py runtime/tools/__init__.py
@@ -320,7 +320,7 @@ git commit -m "feat(runtime): add MCP Agent tools with InjectedToolCallId and To
 
 ---
 
-### Task 4: Specialist Node Wrappers & Offline Mock LLM Engine (`runtime/agents/` & `runtime/mock_llm.py`)
+### Task 4: Specialist 节点包装函数与离线 Mock LLM 引擎 (`runtime/agents/` 与 `runtime/mock_llm.py`)
 
 **Files:**
 - Create: `runtime/mock_llm.py`
@@ -335,9 +335,9 @@ git commit -m "feat(runtime): add MCP Agent tools with InjectedToolCallId and To
 
 **Interfaces:**
 - Consumes: `BlackboardState`, `runtime.tools.mcp_tools`
-- Produces: LangGraph Node functions returning `dict[str, Any]`
+- Produces: 返回 `dict[str, Any]` 的 LangGraph 节点函数
 
-- [x] **Step 1: Write failing test for Agent Node Wrappers and Mock LLM**
+- [x] **Step 1: 编写 Agent 节点包装函数与 Mock LLM 失败测试**
 
 ```python
 # tests/runtime/test_agents.py
@@ -404,12 +404,12 @@ def test_synthesizer_node_wrapper():
     assert update["diagnosis_report"].root_cause_entity == "order-service"
 ```
 
-- [x] **Step 2: Run test to verify it fails**
+- [x] **Step 2: 运行测试验证失败**
 
-Run: `uv run pytest tests/runtime/test_agents.py`
-Expected: FAIL with ModuleNotFoundError or import error for `runtime.mock_llm` / `runtime.agents`.
+运行：`uv run pytest tests/runtime/test_agents.py`
+预期：失败，提示 `ModuleNotFoundError` 或 `runtime.mock_llm` / `runtime.agents` 导入错误。
 
-- [x] **Step 3: Implement runtime/mock_llm.py**
+- [x] **Step 3: 实现 `runtime/mock_llm.py`**
 
 ```python
 # runtime/mock_llm.py
@@ -438,7 +438,7 @@ class MockLLMClient:
             }
 ```
 
-- [x] **Step 4: Implement Agent Node Wrappers in runtime/agents/**
+- [x] **Step 4: 在 `runtime/agents/` 中实现各 Agent 节点包装函数**
 
 `runtime/agents/supervisor.py`:
 ```python
@@ -542,12 +542,12 @@ def synthesizer_node(state: BlackboardState) -> dict[str, Any]:
     }
 ```
 
-- [x] **Step 5: Run test to verify it passes**
+- [x] **Step 5: 运行测试验证通过**
 
-Run: `uv run pytest tests/runtime/test_agents.py`
-Expected: PASS.
+运行：`uv run pytest tests/runtime/test_agents.py`
+预期：测试通过。
 
-- [x] **Step 6: Commit**
+- [x] **Step 6: 提交 Git**
 
 ```bash
 git add runtime/mock_llm.py runtime/agents/ tests/runtime/test_agents.py
@@ -556,17 +556,17 @@ git commit -m "feat(runtime): implement Specialist Node Wrappers and Mock LLM En
 
 ---
 
-### Task 5: StateGraph Assembly & MemorySaver Checkpointer (`runtime/graph.py`)
+### Task 5: StateGraph 组装与 MemorySaver Checkpointer (`runtime/graph.py`)
 
 **Files:**
 - Create: `runtime/graph.py`
 - Create: `tests/runtime/test_graph_workflow.py`
 
 **Interfaces:**
-- Consumes: All node functions in `runtime.agents`, `BlackboardState`, `langgraph.checkpoint.memory.MemorySaver`
+- Consumes: `runtime.agents` 中的所有节点函数, `BlackboardState`, `langgraph.checkpoint.memory.MemorySaver`
 - Produces: `build_diagnosis_graph()`, `run_diagnosis_workflow(alert_dict)`
 
-- [x] **Step 1: Write failing test for full LangGraph workflow execution**
+- [x] **Step 1: 编写 LangGraph 工作流全流程执行失败测试**
 
 ```python
 # tests/runtime/test_graph_workflow.py
@@ -586,12 +586,12 @@ def test_full_diagnosis_workflow():
     assert len(result["evidences"]) >= 4
 ```
 
-- [x] **Step 2: Run test to verify it fails**
+- [x] **Step 2: 运行测试验证失败**
 
-Run: `uv run pytest tests/runtime/test_graph_workflow.py`
-Expected: FAIL with ModuleNotFoundError or import error for `runtime.graph`.
+运行：`uv run pytest tests/runtime/test_graph_workflow.py`
+预期：失败，提示 `ModuleNotFoundError` 或 `runtime.graph` 导入错误。
 
-- [x] **Step 3: Implement runtime/graph.py**
+- [x] **Step 3: 实现 `runtime/graph.py`**
 
 ```python
 # runtime/graph.py
@@ -647,7 +647,7 @@ def build_diagnosis_graph():
         },
     )
 
-    # Specialist Nodes 执完后汇合交回 Supervisor
+    # Specialist Nodes 执行完后汇合交回 Supervisor
     builder.add_edge("MetricsNode", "Supervisor")
     builder.add_edge("LogsNode", "Supervisor")
     builder.add_edge("TraceNode", "Supervisor")
@@ -680,12 +680,12 @@ def run_diagnosis_workflow(alert_dict: dict[str, Any], thread_id: str = "inciden
     return final_state
 ```
 
-- [x] **Step 4: Run test to verify it passes**
+- [x] **Step 4: 运行测试验证通过**
 
-Run: `uv run pytest tests/runtime/test_graph_workflow.py`
-Expected: PASS.
+运行：`uv run pytest tests/runtime/test_graph_workflow.py`
+预期：测试通过。
 
-- [x] **Step 5: Commit**
+- [x] **Step 5: 提交 Git**
 
 ```bash
 git add runtime/graph.py tests/runtime/test_graph_workflow.py
@@ -694,23 +694,23 @@ git commit -m "feat(runtime): assemble LangGraph StateGraph with parallel dispat
 
 ---
 
-### Task 6: Full Verification & Ruff Code Quality Check
+### Task 6: 全量验证与 Ruff 代码质量检查
 
 **Files:**
-- Modify: `README.md` (add Day 5 execution example)
-- Test: Full pytest suite & Ruff check
+- Modify: `README.md`（补充 Agent Runtime 运行示例）
+- Test: 全量 pytest 测试集与 Ruff 检查
 
-- [x] **Step 1: Run full pytest suite across entire repository**
+- [x] **Step 1: 运行全项目单元测试集**
 
-Run: `uv run pytest`
-Expected: ALL tests pass (Day 1-4 tests + Day 5 runtime tests).
+运行：`uv run pytest`
+预期：所有测试全部通过（Day 1-4 测试 + Day 5 runtime 测试）。
 
-- [x] **Step 2: Run Ruff lint and format checks**
+- [x] **Step 2: 运行 Ruff 检查与格式化**
 
-Run: `uv run ruff check --fix .` and `uv run ruff format .`
-Expected: Clean output with zero errors or warnings.
+运行：`uv run ruff check --fix .` 与 `uv run ruff format .`
+预期：零错误零警告。
 
-- [x] **Step 3: Commit**
+- [x] **Step 3: 提交 Git**
 
 ```bash
 git add README.md
