@@ -87,7 +87,7 @@ def test_logs_node_wrapper():
 def test_trace_node_wrapper():
     state: BlackboardState = {
         "messages": [],
-        "incident_alert": {},
+        "incident_alert": {"trace_id": "tr-custom-999"},
         "suspect_entities": ["order-service"],
         "evidences": [],
         "matched_runbooks": [],
@@ -100,6 +100,26 @@ def test_trace_node_wrapper():
     update = trace_node(state)
     assert "evidences" in update
     assert update["evidences"][0].source == "trace"
+    assert update["evidences"][0].details["trace_id"] == "tr-custom-999"
+
+
+def test_multi_entity_node_wrapper():
+    state: BlackboardState = {
+        "messages": [],
+        "incident_alert": {},
+        "suspect_entities": ["order-service", "payment-service"],
+        "evidences": [],
+        "matched_runbooks": [],
+        "current_round": 1,
+        "max_rounds": 5,
+        "next_steps": ["MetricsNode"],
+        "diagnosis_report": None,
+        "status": "RUNNING",
+    }
+    update = metrics_node(state)
+    assert len(update["evidences"]) == 2
+    assert update["evidences"][0].entity_id == "order-service"
+    assert update["evidences"][1].entity_id == "payment-service"
 
 
 def test_knowledge_node_wrapper():

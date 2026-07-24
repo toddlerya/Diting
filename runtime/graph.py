@@ -52,13 +52,7 @@ def build_diagnosis_graph():
     builder.add_conditional_edges(
         "Supervisor",
         route_supervisor,
-        {
-            "MetricsNode": "MetricsNode",
-            "LogsNode": "LogsNode",
-            "TraceNode": "TraceNode",
-            "KnowledgeNode": "KnowledgeNode",
-            "Synthesizer": "Synthesizer",
-        },
+        list(VALID_NODES),
     )
 
     # Specialist Nodes 执完后汇合交回 Supervisor
