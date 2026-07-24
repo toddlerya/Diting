@@ -177,6 +177,19 @@ Diting 基于 [FastMCP](https://github.com/jlowin/fastmcp) 实现了标准的 MC
 * **Wiki RAG 降噪定位**：`Knowledge Agent` 基于关键词去混杂了 **90% 干扰运维Wiki** 的知识库中进行降噪检索，匹配并筛选正确的故障 Runbook。
 * **决策网关与推导**：`Correlation / Diagnosis Agent` 充当决策门，自动评估白板数据是否闭环，流向最终的根因结构化推导与 HTML 报告输出。
 
+```python
+from runtime.graph import run_diagnosis_workflow
+
+alert = {
+    "alert_name": "HighCpuUsage",
+    "service": "order-service",
+    "timestamp": "2026-07-24T00:00:00+00:00"
+}
+result = run_diagnosis_workflow(alert_dict=alert, thread_id="incident-001")
+print(f"Status: {result['status']}")
+print(f"Root cause: {result['diagnosis_report'].root_cause_entity}")
+```
+
 ### 6. 混合评估引擎 (Hybrid Evaluator)
 不仅对比 Root Cause 是否正确。结合 LangFuse 全链路 Trace，评估：
 * **Root Cause 准确率**（根因定位）
