@@ -11,17 +11,26 @@ from runtime.agents.synthesizer import synthesizer_node
 from runtime.agents.trace_agent import trace_node
 from runtime.schema import BlackboardState
 
+VALID_NODES = {
+    "MetricsNode",
+    "LogsNode",
+    "TraceNode",
+    "KnowledgeNode",
+    "Synthesizer",
+}
+
 
 def route_supervisor(state: BlackboardState) -> list[str]:
     """根据 Supervisor 输出的 next_steps 进行动态扇出条件路由。"""
-    steps = state.get("next_steps", [])
+    raw_steps = state.get("next_steps", [])
+    valid_steps = [s for s in raw_steps if s in VALID_NODES]
     status = state.get("status", "RUNNING")
     curr_round = state.get("current_round", 1)
     max_rounds = state.get("max_rounds", 5)
 
-    if status == "COMPLETED" or curr_round > max_rounds or "Synthesizer" in steps:
+    if status == "COMPLETED" or curr_round > max_rounds or "Synthesizer" in valid_steps:
         return ["Synthesizer"]
-    return steps if steps else ["Synthesizer"]
+    return valid_steps if valid_steps else ["Synthesizer"]
 
 
 def build_diagnosis_graph():

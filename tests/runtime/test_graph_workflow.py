@@ -1,4 +1,4 @@
-from runtime.graph import build_diagnosis_graph, run_diagnosis_workflow
+from runtime.graph import build_diagnosis_graph, route_supervisor, run_diagnosis_workflow
 
 
 def test_full_diagnosis_workflow():
@@ -18,3 +18,20 @@ def test_full_diagnosis_workflow():
 def test_graph_structure_compilation():
     graph = build_diagnosis_graph()
     assert graph is not None
+
+
+def test_route_supervisor_invalid_node_filtering():
+    state = {
+        "messages": [],
+        "incident_alert": {},
+        "suspect_entities": ["order-service"],
+        "evidences": [],
+        "matched_runbooks": [],
+        "current_round": 1,
+        "max_rounds": 5,
+        "next_steps": ["InvalidNode", "MetricsNode", "UnknownAgent"],
+        "diagnosis_report": None,
+        "status": "RUNNING",
+    }
+    routes = route_supervisor(state)
+    assert routes == ["MetricsNode"]
