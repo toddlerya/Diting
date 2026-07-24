@@ -65,6 +65,9 @@ uv remove <package_name>
 # 运行 demo 仿真脚本
 uv run python run_simulator_demo.py
 
+# 运行 Agent Runtime 故障诊断 demo
+uv run python run_agent_demo.py
+
 # 执行单元测试
 uv run pytest
 
@@ -147,7 +150,7 @@ uv run ruff format --check .
 5. **模块化解耦架构**
    - **`simulator/`**: 物理资源抽象、时钟步进、离线投影与共享内存 State HTTP API Server。
    - **`mcp/`**: 基于标准 MCP 协议暴露 Prometheus, Loki, Trace, Knowledge 接口。
-   - **`runtime/`**: 基于 LangGraph 的多 Agent 协作诊断工作流。
+   - **`runtime/`**: 基于 LangGraph `StateGraph` 的多 Agent 协作诊断工作流。使用 `with_structured_output` 约束结构化决策（`SupervisorDecision`, `DiagnosisReport`），通过 `JsonPlusSerializer` 注册允许反序列化类型，并抽离 `runtime/prompts.py` 统一管理 Prompt 模板。
    - **`evaluator/`**: 多维打分与 Ground Truth 校验算法。
    - **`tests/`**: pytest 单元测试。
 

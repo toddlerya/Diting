@@ -167,10 +167,17 @@ Diting 基于 [FastMCP](https://github.com/jlowin/fastmcp) 实现了标准的 MC
    ```bash
    npx @modelcontextprotocol/inspector uv run python -m mcp.prometheus_server
    ```
+5. **Agent Runtime Multi-Agent 诊断 Demo**：
+   ```bash
+   uv run python run_agent_demo.py
+   ```
 
 ### 5. LangGraph Multi-Agent 黑板协同诊断流
 使用 LangGraph 状态图构建 **多轮黑板协作（Blackboard Collaboration Loop）** 排查工作流，深度展现状态控制力：
 * **排查白板 (Blackboard State)**：State 中维护会话级排查上下文（如 `suspect_entities` 可疑实体、时间范围、轮次）。各 Agent 通过协作黑板进行信息流转。
+* **结构化决策与强类型约束**：使用 LangChain `with_structured_output` 直接约束 `SupervisorDecision` 与 `DiagnosisReport` 格式输出；支持别名规整（如 `MetricsNode`, `LogsNode`），配合 Pydantic v2 实现 Fail-Fast。
+* **Prompt 模板解耦 (`runtime/prompts.py`)**：剥离 Agent 系统的提示词模板，采用双语支持与结构化占位符替换，保持 Agent 代码逻辑极简。
+* **Msgpack Checkpointer 安全序列化**：通过在 `JsonPlusSerializer` 中配置 `allowed_msgpack_modules` 注册表，保障与 LangGraph Checkpointer (`MemorySaver`) 的前向兼容与无警告恢复。
 * **职责隔离与多轮循迹**：
   * **Round 1 (广度首查)**：平行子 Agent (Metrics, Logs, Trace Agent) 仅调用对应领域的 MCP 工具，捞取入口警报的表层指标并追加下层可疑节点至白板。
   * **Round 2 (深度定向)**：子 Agent 观察白板中新放入的可疑节点（如 OrderService），定向深入检索其对应时段的细节日志、重试链路，极具靶向性地节省 Token 并过滤白噪声。
@@ -227,16 +234,20 @@ Diting/
 │   └── knowledge_server.py
 │
 ├── runtime/                  # Agent Runtime 运行时
-│   ├── graph.py              # LangGraph 状态机定义
-│   ├── planner.py            # Planner
-│   ├── agents/               # 职责隔离的子 Agents
-│   └── tools/                # 连接 MCP 的 Tools
+│   ├── graph.py              # LangGraph StateGraph 状态机定义 (含 JsonPlusSerializer Checkpointer)
+│   ├── llm.py                # ChatOpenAI LLM 客户端初始化入口
+│   ├── mock_llm.py            # 离线/测试 Mock LLM 驱动
+│   ├── prompts.py            # System/Human Prompt 模板集 (支持结构化 Format)
+│   ├── schema.py             # Evidence, DiagnosisReport, SupervisorDecision & BlackboardState
+│   ├── agents/               # 职责隔离的子 Agents (Supervisor, Specialist Wrappers, Synthesizer)
+│   └── tools/                # 标准 MCP 工具适配器 (langchain-mcp-adapters)
 │
 ├── evaluator/                # 评估模块
 │   └── evaluator.py          # 多维打分与 Ground Truth 比对
 │
 ├── frontend/                 # 简易 Web 监控面板
 │
+├── run_agent_demo.py         # Agent Runtime 诊断流程 Demo 运行脚本
 └── README.md
 ```
 

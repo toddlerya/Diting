@@ -91,13 +91,29 @@ class DiagnosisReport(BaseModel):
     summary: str
     recommended_actions: list[str] = Field(default_factory=list)
 
+ValidNodeName = Literal["MetricsNode", "LogsNode", "TraceNode", "KnowledgeNode", "Synthesizer"]
+
+# --- Supervisor 结构化决议 ---
+class SupervisorDecision(BaseModel):
+    next_steps: list[ValidNodeName] = Field(
+        description="List of exact node names to dispatch. MUST be selected from: 'MetricsNode', 'LogsNode', 'TraceNode', 'KnowledgeNode', 'Synthesizer'."
+    )
+    suspect_entities: list[str] = Field(
+        default_factory=list,
+        description="List of suspect entity IDs identified during investigation.",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Brief rationale for the routing decision.",
+    )
+
 # --- LangGraph 黑板共享状态 ---
 class BlackboardState(TypedDict):
     messages: Annotated[list[BaseMessage], operator.add]
     incident_alert: dict
     suspect_entities: list[str]
     evidences: Annotated[list[Evidence], operator.add]
-    matched_runbooks: list[dict]
+    matched_runbooks: Annotated[list[dict], operator.add]
     current_round: int
     max_rounds: int
     next_steps: list[str]  # 并发派发列表，例如 ["MetricsNode", "LogsNode"]
@@ -107,48 +123,42 @@ class BlackboardState(TypedDict):
 
 ---
 
-## 5. Node Wrapper、Tool 绑定与 Mock 策略 (`runtime/tools/`, `runtime/agents/` & `runtime/mock_llm.py`)
+## 5. Node Wrapper、Tool 绑定、Prompt 模板与 Checkpointer (`runtime/tools/`, `runtime/agents/` & `runtime/prompts.py`)
 
 ### 5.1 Tool 函数与 LangGraph Node Wrapper 函数的边界规范
 明确区分底层 Tool 函数与 LangGraph Node 函数的职责和返回值规范：
 
-- **底层 Tool 函数** (`runtime/tools/mcp_tools.py`)：使用 `InjectedToolCallId` 生成领域业务数据与对应的 `ToolMessage`：
-```python
-from langchain_core.tools import InjectedToolCallId
-from langchain_core.messages import ToolMessage
+- **底层 MCP Tool 集成与 LangChain Adapters** (`runtime/tools/mcp_tools.py`)：使用 `langchain_mcp_adapters` 接入后端 MCP Streamable HTTP 协议服务（`http://127.0.0.1:8001/mcp/sse` 等），并向后兼容 Mock/Injected 工具生成标准 `Evidence` 与 `ToolMessage`。
 
-def query_prometheus_metrics_tool(
-    query: str,
-    start: str,
-    end: str,
-    tool_call_id: Annotated[str, InjectedToolCallId]
-) -> tuple[Evidence, ToolMessage]:
-    # 逻辑：调用 MCP 服务并返回 Evidence 实体与关联 ToolMessage
-    ...
-```
-
-- **LangGraph Node Wrapper** (`runtime/agents/metrics_agent.py`)：遵循 LangGraph 节点标准接口 `(state: BlackboardState) -> dict[str, Any]`：
+- **LangGraph Node Wrapper** (`runtime/agents/metrics_agent.py` 等)：遵循 LangGraph 节点标准接口 `(state: BlackboardState) -> dict[str, Any]`：
 ```python
 def metrics_node(state: BlackboardState) -> dict[str, Any]:
-    # 包装 Tool 调用并将结果映射为可被 State Reducer 消费的字典
-    evidence, tool_msg = query_prometheus_metrics_tool(query=..., start=..., end=..., tool_call_id=...)
+    # 包装 MCP 工具调用并将结果映射为可被 State Reducer 消费的字典
+    evidence, tool_msg = query_prometheus_metrics_tool(...)
     return {
         "evidences": [evidence],
         "messages": [tool_msg]
     }
 ```
 
-### 5.2 MockLLMClient 并行 ToolCall 策略
+### 5.2 Agent 提示词隔离 (`runtime/prompts.py`) 与 LLM 结构化输出
+为避免提示词与 Graph/Agent 逻辑紧耦合，在 `runtime/prompts.py` 中集中定义与管理：
+- `SUPERVISOR_SYSTEM_PROMPT` / `SUPERVISOR_HUMAN_PROMPT`：定义编排策略与黑板上下文渲染。
+- `SYNTHESIZER_SYSTEM_PROMPT` / `SYNTHESIZER_HUMAN_PROMPT`：定义诊断报告合成规范。
+
+在 `Supervisor` 和 `Synthesizer` 节点中，使用 `llm.with_structured_output(SupervisorDecision)` 与 `llm.with_structured_output(DiagnosisReport)` 进行强类型 LLM 提取，配合 `NODE_NAME_MAP` 别名规整（如 `metricsnode` -> `MetricsNode`），确保动态派发的稳健性。
+
+### 5.3 MockLLMClient 并行 ToolCall 策略
 为了支持无网络 / 无 API Key 下的确定性多轮并发单测：
 - `MockLLMClient` 实现 `invoke(state: BlackboardState)`。
 - 根据 `state["current_round"]` 与白板内容，按轮次确定性返回：
   - **Round 1**：返回并发派发列表 `{"next_steps": ["MetricsNode", "LogsNode", "TraceNode", "KnowledgeNode"]}`。
-  - **Round 2**：返回定向派发列表 `{"next_steps": ["LogsNode"]}` 并更新 `suspect_entities: ["OrderService"]`。
+  - **Round 2**：返回定向派发列表 `{"next_steps": ["LogsNode"]}` 并更新 `suspect_entities: ["order-service"]`。
   - **Round 3**：证据闭环，返回 `{"next_steps": ["Synthesizer"]}`。
 
-### 5.3 上下文降噪与 Checkpointer 支持
+### 5.4 上下文降噪与 Checkpointer 反序列化注册
 - **证据摘要 (Summary)**：MCP 原始响应均在 Node 内格式化提炼为 `Evidence.summary`，避免 Raw Log/Trace 的 Context Bloat。
-- **MemorySaver**：通过 `StateGraph.compile(checkpointer=MemorySaver())`，支持基于 `thread_id` 的每轮状态快照持久化，供 `evaluator/` 计算 Path Recall。
+- **MemorySaver 与 JsonPlusSerializer**：在 `runtime/graph.py` 中，显式将 `("runtime.schema", "Evidence")`、`("runtime.schema", "DiagnosisReport")` 和 `("runtime.schema", "SupervisorDecision")` 注册至 `JsonPlusSerializer(allowed_msgpack_modules=...)`，避免快照恢复时的 msgpack 警报并支持基于 `thread_id` 的状态审计回溯。
 
 ---
 
@@ -157,20 +167,20 @@ def metrics_node(state: BlackboardState) -> dict[str, Any]:
 ```text
 runtime/
 ├── __init__.py
-├── schema.py              # Pydantic 模型与 BlackboardState 定义 (含 next_steps 并行列表)
+├── schema.py              # Pydantic 模型 (Evidence, DiagnosisReport, SupervisorDecision) 与 BlackboardState 定义
+├── llm.py                # ChatOpenAI LLM 客户端工厂 (get_llm)
 ├── mock_llm.py            # 离线/测试 Mock LLM 驱动 (基于轮次返回并发/定向 next_steps)
-├── tools/                 # MCP 服务适配与 InjectedToolCallId 包装
-│   ├── __init__.py
-│   └── mcp_tools.py
+├── prompts.py            # Agent 提示词模板集 (Supervisor & Synthesizer 消息模板)
+├── tools/                 # MCP 服务适配与 InjectedToolCallId 包装 (mcp_tools.py)
 ├── agents/                # 各 Node Wrapper 节点实现 (返回 dict[str, Any])
 │   ├── __init__.py
-│   ├── supervisor.py      # Planner / Supervisor Agent Node
+│   ├── supervisor.py      # Planner / Supervisor Agent Node (with_structured_output)
 │   ├── metrics_agent.py   # Prometheus Metrics Agent Node Wrapper
 │   ├── logs_agent.py      # Loki Logs Agent Node Wrapper
 │   ├── trace_agent.py     # Distributed Trace Agent Node Wrapper
 │   ├── knowledge_agent.py # Knowledge Runbook Agent Node Wrapper
 │   └── synthesizer.py     # Root Cause Synthesizer Node
-└── graph.py               # 原生 StateGraph 组装 (add_conditional_edges 并发路由 + MemorySaver)
+└── graph.py               # 原生 StateGraph 组装 (add_conditional_edges 并发路由 + JsonPlusSerializer MemorySaver)
 ```
 
 ---

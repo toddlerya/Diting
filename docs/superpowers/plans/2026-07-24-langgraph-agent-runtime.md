@@ -1,6 +1,6 @@
 # LangGraph Multi-Agent Agent Runtime Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Implement the Day 5 `runtime/` module for Diting (谛听), creating a multi-agent blackboard collaboration workflow built on native LangGraph `StateGraph`, Pydantic v2 evidence schemas, parallel fan-out dispatch, and offline Mock LLM support.
 
@@ -28,16 +28,16 @@
 - Consumes: `pyproject.toml`
 - Produces: `langgraph`, `langchain-core`, `langchain-openai` installed in `.venv`
 
-- [ ] **Step 1: Update pyproject.toml with LangGraph & LangChain dependencies**
+- [x] **Step 1: Update pyproject.toml with LangGraph & LangChain dependencies**
 
 Add `"langgraph>=0.2.70"`, `"langchain-core>=0.3.38"`, `"langchain-openai>=0.3.7"` to `pyproject.toml`.
 
-- [ ] **Step 2: Sync dependencies with uv**
+- [x] **Step 2: Sync dependencies with uv**
 
 Run: `uv sync`
 Expected: Successfully synced dependencies without errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add pyproject.toml uv.lock
@@ -58,7 +58,7 @@ git commit -m "build(deps): add langgraph and langchain dependencies for Day 5 r
 - Consumes: Pydantic v2, `langchain_core.messages.BaseMessage`
 - Produces: `Evidence`, `DiagnosisReport`, `BlackboardState`
 
-- [ ] **Step 1: Write failing test for schema and BlackboardState**
+- [x] **Step 1: Write failing test for schema and BlackboardState**
 
 ```python
 # tests/runtime/test_schema.py
@@ -104,12 +104,12 @@ def test_blackboard_state_initialization():
     assert state["status"] == "RUNNING"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/runtime/test_schema.py`
 Expected: FAIL with ModuleNotFoundError or import error for `runtime.schema`.
 
-- [ ] **Step 3: Implement runtime/schema.py**
+- [x] **Step 3: Implement runtime/schema.py**
 
 ```python
 # runtime/schema.py
@@ -151,12 +151,12 @@ class BlackboardState(TypedDict):
     status: Literal["RUNNING", "COMPLETED", "FAILED"]
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/runtime/test_schema.py`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add runtime/schema.py tests/runtime/test_schema.py runtime/__init__.py tests/runtime/__init__.py
@@ -176,7 +176,7 @@ git commit -m "feat(runtime): add BlackboardState and Pydantic Evidence schemas"
 - Consumes: `runtime.schema.Evidence`, MCP server APIs (Prometheus, Loki, Trace, Knowledge)
 - Produces: MCP Tool functions returning `(Evidence, ToolMessage)`
 
-- [ ] **Step 1: Write failing test for MCP Agent Tools**
+- [x] **Step 1: Write failing test for MCP Agent Tools**
 
 ```python
 # tests/runtime/test_mcp_tools.py
@@ -210,12 +210,12 @@ def test_query_logs_tool_mock():
     assert tool_msg.tool_call_id == "call_456"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/runtime/test_mcp_tools.py`
 Expected: FAIL with ModuleNotFoundError or import error for `runtime.tools.mcp_tools`.
 
-- [ ] **Step 3: Implement runtime/tools/mcp_tools.py**
+- [x] **Step 3: Implement runtime/tools/mcp_tools.py**
 
 ```python
 # runtime/tools/mcp_tools.py
@@ -306,12 +306,12 @@ def query_knowledge_tool(
     return ev, msg
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/runtime/test_mcp_tools.py`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add runtime/tools/mcp_tools.py tests/runtime/test_mcp_tools.py runtime/tools/__init__.py
@@ -337,7 +337,7 @@ git commit -m "feat(runtime): add MCP Agent tools with InjectedToolCallId and To
 - Consumes: `BlackboardState`, `runtime.tools.mcp_tools`
 - Produces: LangGraph Node functions returning `dict[str, Any]`
 
-- [ ] **Step 1: Write failing test for Agent Node Wrappers and Mock LLM**
+- [x] **Step 1: Write failing test for Agent Node Wrappers and Mock LLM**
 
 ```python
 # tests/runtime/test_agents.py
@@ -404,12 +404,12 @@ def test_synthesizer_node_wrapper():
     assert update["diagnosis_report"].root_cause_entity == "order-service"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/runtime/test_agents.py`
 Expected: FAIL with ModuleNotFoundError or import error for `runtime.mock_llm` / `runtime.agents`.
 
-- [ ] **Step 3: Implement runtime/mock_llm.py**
+- [x] **Step 3: Implement runtime/mock_llm.py**
 
 ```python
 # runtime/mock_llm.py
@@ -438,7 +438,7 @@ class MockLLMClient:
             }
 ```
 
-- [ ] **Step 4: Implement Agent Node Wrappers in runtime/agents/**
+- [x] **Step 4: Implement Agent Node Wrappers in runtime/agents/**
 
 `runtime/agents/supervisor.py`:
 ```python
@@ -542,12 +542,12 @@ def synthesizer_node(state: BlackboardState) -> dict[str, Any]:
     }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `uv run pytest tests/runtime/test_agents.py`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add runtime/mock_llm.py runtime/agents/ tests/runtime/test_agents.py
@@ -566,7 +566,7 @@ git commit -m "feat(runtime): implement Specialist Node Wrappers and Mock LLM En
 - Consumes: All node functions in `runtime.agents`, `BlackboardState`, `langgraph.checkpoint.memory.MemorySaver`
 - Produces: `build_diagnosis_graph()`, `run_diagnosis_workflow(alert_dict)`
 
-- [ ] **Step 1: Write failing test for full LangGraph workflow execution**
+- [x] **Step 1: Write failing test for full LangGraph workflow execution**
 
 ```python
 # tests/runtime/test_graph_workflow.py
@@ -586,12 +586,12 @@ def test_full_diagnosis_workflow():
     assert len(result["evidences"]) >= 4
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/runtime/test_graph_workflow.py`
 Expected: FAIL with ModuleNotFoundError or import error for `runtime.graph`.
 
-- [ ] **Step 3: Implement runtime/graph.py**
+- [x] **Step 3: Implement runtime/graph.py**
 
 ```python
 # runtime/graph.py
@@ -680,12 +680,12 @@ def run_diagnosis_workflow(alert_dict: dict[str, Any], thread_id: str = "inciden
     return final_state
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/runtime/test_graph_workflow.py`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add runtime/graph.py tests/runtime/test_graph_workflow.py
@@ -700,17 +700,17 @@ git commit -m "feat(runtime): assemble LangGraph StateGraph with parallel dispat
 - Modify: `README.md` (add Day 5 execution example)
 - Test: Full pytest suite & Ruff check
 
-- [ ] **Step 1: Run full pytest suite across entire repository**
+- [x] **Step 1: Run full pytest suite across entire repository**
 
 Run: `uv run pytest`
 Expected: ALL tests pass (Day 1-4 tests + Day 5 runtime tests).
 
-- [ ] **Step 2: Run Ruff lint and format checks**
+- [x] **Step 2: Run Ruff lint and format checks**
 
 Run: `uv run ruff check --fix .` and `uv run ruff format .`
 Expected: Clean output with zero errors or warnings.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md
