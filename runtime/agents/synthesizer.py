@@ -1,11 +1,57 @@
+import json
 from typing import Any
 
-from runtime.llm import invoke_synthesizer_llm
+from loguru import logger
+
+from runtime.llm import get_llm
+from runtime.prompts import SYNTHESIZER_PROMPT
 from runtime.schema import BlackboardState, DiagnosisReport
 
 
+def _invoke_synthesizer_llm(state: BlackboardState) -> DiagnosisReport | None:
+    llm = get_llm()
+    if not llm:
+        return None
+
+    try:
+        alert = state.get("incident_alert", {})
+        evidences = [e.model_dump() for e in state.get("evidences", [])]
+        runbooks = state.get("matched_runbooks", [])
+
+        user_content = json.dumps(
+            {
+                "incident_alert": alert,
+                "suspect_entities": state.get("suspect_entities", []),
+                "evidences": evidences,
+                "matched_runbooks": runbooks,
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+
+        logger.info(f"🚀 [LLM Request] Agent=Synthesizer | Model={llm.model_name}")
+        logger.debug(f"📝 [LLM Request Prompt - Synthesizer]\n{user_content}")
+
+        chain = SYNTHESIZER_PROMPT | llm.with_structured_output(DiagnosisReport)
+        report: DiagnosisReport = chain.invoke(
+            {
+                "context_json": user_content,
+            }
+        )
+
+        logger.info(
+            f"✅ [LLM Parsed Report - Synthesizer] RootCause={report.root_cause_entity} | Failure={report.failure_type} | Confidence={report.confidence}"
+        )
+        return report
+    except Exception as e:
+        logger.warning(
+            f"⚠️ [LLM Failure] Synthesizer LLM call failed ({e}), falling back to mock report."
+        )
+        return None
+
+
 def synthesizer_node(state: BlackboardState) -> dict[str, Any]:
-    report = invoke_synthesizer_llm(state)
+    report = _invoke_synthesizer_llm(state)
     if not report:
         evidences = state.get("evidences", [])
         ev_ids = [e.id for e in evidences]

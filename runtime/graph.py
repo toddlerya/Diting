@@ -1,6 +1,7 @@
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, StateGraph
 
 from runtime.agents.knowledge_agent import knowledge_node
@@ -64,7 +65,14 @@ def build_diagnosis_graph():
     # Synthesizer 诊断结束
     builder.add_edge("Synthesizer", END)
 
-    checkpointer = MemorySaver()
+    serde = JsonPlusSerializer(
+        allowed_msgpack_modules=[
+            ("runtime.schema", "Evidence"),
+            ("runtime.schema", "DiagnosisReport"),
+            ("runtime.schema", "SupervisorDecision"),
+        ]
+    )
+    checkpointer = MemorySaver(serde=serde)
     return builder.compile(checkpointer=checkpointer)
 
 

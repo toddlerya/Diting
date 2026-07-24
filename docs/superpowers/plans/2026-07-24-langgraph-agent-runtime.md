@@ -1,4 +1,4 @@
-# Day 5 LangGraph Multi-Agent Agent Runtime Implementation Plan
+# LangGraph Multi-Agent Agent Runtime Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -350,7 +350,7 @@ from runtime.agents.synthesizer import synthesizer_node
 
 def test_mock_llm_multi_round_decisions():
     client = MockLLMClient()
-    
+
     # Round 1 -> Parallel dispatch
     state1: BlackboardState = {
         "messages": [],
