@@ -31,17 +31,15 @@ Diting (谛听) 是一个分布式系统状态仿真与 Agent 评估平台 (ASSE
 graph TD
     Start([Start Incident Alert]) --> Supervisor[Planner / Supervisor Node]
     
-    Supervisor -->|Parallel Fan-Out| Dispatcher{Parallel Dispatcher}
+    Supervisor -->|add_conditional_edges / Fan-Out Routing| MetricsNode[Metrics Agent]
+    Supervisor -->|add_conditional_edges / Fan-Out Routing| LogsNode[Logs Agent]
+    Supervisor -->|add_conditional_edges / Fan-Out Routing| TraceNode[Trace Agent]
+    Supervisor -->|add_conditional_edges / Fan-Out Routing| KnowledgeNode[Knowledge Agent]
     
-    Dispatcher -->|Parallel Tool Call| MetricsNode[Metrics Agent]
-    Dispatcher -->|Parallel Tool Call| LogsNode[Logs Agent]
-    Dispatcher -->|Parallel Tool Call| TraceNode[Trace Agent]
-    Dispatcher -->|Parallel Tool Call| KnowledgeNode[Knowledge Agent]
-    
-    MetricsNode -->|Evidence + ToolMessage| Blackboard[Blackboard State Reducer]
-    LogsNode -->|Evidence + ToolMessage| Blackboard
-    TraceNode -->|Evidence + ToolMessage| Blackboard
-    KnowledgeNode -->|Evidence + ToolMessage| Blackboard
+    MetricsNode -->|Return dict: evidences + messages| Blackboard[Blackboard State Reducer]
+    LogsNode -->|Return dict: evidences + messages| Blackboard
+    TraceNode -->|Return dict: evidences + messages| Blackboard
+    KnowledgeNode -->|Return dict: evidences + messages| Blackboard
     
     Blackboard --> Supervisor
     
@@ -49,16 +47,18 @@ graph TD
     Synthesizer --> Finish([Output Diagnosis Report / End])
 ```
 
+> **注**：Supervisor 通过 LangGraph 条件边 `add_conditional_edges`（基于 `Send` API 或节点数组）直接路由到目标 Specialist Node，无额外的图逻辑中间节点开销。
+
 ### 节点与状态流转约定：
 
-| 节点名称 | 核心职责 | 输入状态 | 依赖工具 / MCP | 输出/状态变更 |
+| 节点名称 | 核心职责 | 输入状态 | 依赖工具 / MCP | 输出 (Dict Key-Value) |
 | :--- | :--- | :--- | :--- | :--- |
-| **`Supervisor`** | 完整 Converse Agent，分析黑板并并发决定派发目标 Agent 列表 | `BlackboardState` | LLM + Tool Router / Structured Output | `next_steps: list[str]`, `current_round`+1 |
-| **`MetricsNode`** | 检索 Prometheus 时序指标 (CPU/Mem/QPS/Latency) | `suspect_entities` | Prometheus MCP + `InjectedToolCallId` | `Evidence` + `ToolMessage` |
-| **`LogsNode`** | 检索 Loki 日志，分析 Exception 堆栈 | `suspect_entities`, 时段 | Loki MCP + `InjectedToolCallId` | `Evidence` + `ToolMessage` |
-| **`TraceNode`** | 检索分布式调用链，分析 High-latency Span | `suspect_entities`, TraceID | Trace MCP + `InjectedToolCallId` | `Evidence` + `ToolMessage` |
-| **`KnowledgeNode`** | 检索运维 Wiki 与故障 Runbook | 关键词, 现象描述 | Knowledge MCP + `InjectedToolCallId` | `Evidence` + `ToolMessage` |
-| **`Synthesizer`** | 聚合所有 Evidence 生成结构化诊断报告 | `BlackboardState` | LLM Structured Output | `diagnosis_report`, `status="COMPLETED"` |
+| **`Supervisor`** | 完整 Converse Agent，分析黑板并并发决定派发目标 Agent 列表 | `BlackboardState` | LLM + Structured Output / Router | `{"next_steps": list[str], "current_round": round+1}` |
+| **`MetricsNode`** | 检索 Prometheus 时序指标 (CPU/Mem/QPS/Latency) | `suspect_entities` | Prometheus MCP + `InjectedToolCallId` | `{"evidences": [Evidence], "messages": [ToolMessage]}` |
+| **`LogsNode`** | 检索 Loki 日志，分析 Exception 堆栈 | `suspect_entities`, 时段 | Loki MCP + `InjectedToolCallId` | `{"evidences": [Evidence], "messages": [ToolMessage]}` |
+| **`TraceNode`** | 检索分布式调用链，分析 High-latency Span | `suspect_entities`, TraceID | Trace MCP + `InjectedToolCallId` | `{"evidences": [Evidence], "messages": [ToolMessage]}` |
+| **`KnowledgeNode`** | 检索运维 Wiki 与故障 Runbook | 关键词, 现象描述 | Knowledge MCP + `InjectedToolCallId` | `{"evidences": [Evidence], "messages": [ToolMessage]}` |
+| **`Synthesizer`** | 聚合所有 Evidence 生成结构化诊断报告 | `BlackboardState` | LLM Structured Output | `{"diagnosis_report": DiagnosisReport, "status": "COMPLETED"}` |
 
 ---
 
@@ -100,20 +100,19 @@ class BlackboardState(TypedDict):
     matched_runbooks: list[dict]
     current_round: int
     max_rounds: int
-    next_steps: list[str]  # 允许并发派发多个 Agent，例如 ["MetricsNode", "LogsNode"]
+    next_steps: list[str]  # 并发派发列表，例如 ["MetricsNode", "LogsNode"]
     diagnosis_report: DiagnosisReport | None
     status: Literal["RUNNING", "COMPLETED", "FAILED"]
 ```
 
 ---
 
-## 5. Context Engineering & Tool 配对约束 (`runtime/tools/` & `runtime/mock_llm.py`)
+## 5. Node Wrapper、Tool 绑定与 Mock 策略 (`runtime/tools/`, `runtime/agents/` & `runtime/mock_llm.py`)
 
-### 5.1 ToolCall 与 ToolMessage 配对规范
-为确保与 LangChain / OpenAI Messages 协议的严格一致：
-- 每个 Specialist Node 在执行 MCP 查询后，必须构造并返回 `ToolMessage(content=..., tool_call_id=tool_call_id)`，防止对话历史状态失效。
-- 借助 `InjectedToolCallId` 在工具函数中自动获取调用 ID。
+### 5.1 Tool 函数与 LangGraph Node Wrapper 函数的边界规范
+明确区分底层 Tool 函数与 LangGraph Node 函数的职责和返回值规范：
 
+- **底层 Tool 函数** (`runtime/tools/mcp_tools.py`)：使用 `InjectedToolCallId` 生成领域业务数据与对应的 `ToolMessage`：
 ```python
 from langchain_core.tools import InjectedToolCallId
 from langchain_core.messages import ToolMessage
@@ -124,16 +123,32 @@ def query_prometheus_metrics_tool(
     end: str,
     tool_call_id: Annotated[str, InjectedToolCallId]
 ) -> tuple[Evidence, ToolMessage]:
+    # 逻辑：调用 MCP 服务并返回 Evidence 实体与关联 ToolMessage
     ...
 ```
 
-### 5.2 上下文降噪与 Summarization (Context Bloat Control)
-- **原始数据不直接入库**：MCP 返回的原始 JSON/Log 文本（可能高达数百行）必须在 Node 侧经由格式化提取摘要（Summary），提炼为紧凑的 `Evidence` 结构后写入白板。
-- **消息历史裁剪**：`BlackboardState` 的 `evidences` 列表作为结构化单源，`messages` 历史仅保留每轮关键决策与 `ToolMessage` 简报，避免上下文随轮数增长出现爆炸 (Context Bloat)。
+- **LangGraph Node Wrapper** (`runtime/agents/metrics_agent.py`)：遵循 LangGraph 节点标准接口 `(state: BlackboardState) -> dict[str, Any]`：
+```python
+def metrics_node(state: BlackboardState) -> dict[str, Any]:
+    # 包装 Tool 调用并将结果映射为可被 State Reducer 消费的字典
+    evidence, tool_msg = query_prometheus_metrics_tool(query=..., start=..., end=..., tool_call_id=...)
+    return {
+        "evidences": [evidence],
+        "messages": [tool_msg]
+    }
+```
 
-### 5.3 LangGraph Checkpointer 持久化支持
-- 图组装时接入 `MemorySaver`（或 `SqliteSaver`），通过 `config={"configurable": {"thread_id": incident_id}}` 进行多轮中间状态持久化。
-- 方便 `evaluator/` 模块后续针对任意诊断轮次提取 Trace 并进行中间步骤打分与审计回溯。
+### 5.2 MockLLMClient 并行 ToolCall 策略
+为了支持无网络 / 无 API Key 下的确定性多轮并发单测：
+- `MockLLMClient` 实现 `invoke(state: BlackboardState)`。
+- 根据 `state["current_round"]` 与白板内容，按轮次确定性返回：
+  - **Round 1**：返回并发派发列表 `{"next_steps": ["MetricsNode", "LogsNode", "TraceNode", "KnowledgeNode"]}`。
+  - **Round 2**：返回定向派发列表 `{"next_steps": ["LogsNode"]}` 并更新 `suspect_entities: ["OrderService"]`。
+  - **Round 3**：证据闭环，返回 `{"next_steps": ["Synthesizer"]}`。
+
+### 5.3 上下文降噪与 Checkpointer 支持
+- **证据摘要 (Summary)**：MCP 原始响应均在 Node 内格式化提炼为 `Evidence.summary`，避免 Raw Log/Trace 的 Context Bloat。
+- **MemorySaver**：通过 `StateGraph.compile(checkpointer=MemorySaver())`，支持基于 `thread_id` 的每轮状态快照持久化，供 `evaluator/` 计算 Path Recall。
 
 ---
 
@@ -143,19 +158,19 @@ def query_prometheus_metrics_tool(
 runtime/
 ├── __init__.py
 ├── schema.py              # Pydantic 模型与 BlackboardState 定义 (含 next_steps 并行列表)
-├── mock_llm.py            # 离线/测试 Mock LLM 驱动 (支持并发 ToolCall 生成)
+├── mock_llm.py            # 离线/测试 Mock LLM 驱动 (基于轮次返回并发/定向 next_steps)
 ├── tools/                 # MCP 服务适配与 InjectedToolCallId 包装
 │   ├── __init__.py
 │   └── mcp_tools.py
-├── agents/                # 各 Node 节点实现
+├── agents/                # 各 Node Wrapper 节点实现 (返回 dict[str, Any])
 │   ├── __init__.py
 │   ├── supervisor.py      # Planner / Supervisor Agent Node
-│   ├── metrics_agent.py   # Prometheus Metrics Agent Node
-│   ├── logs_agent.py      # Loki Logs Agent Node
-│   ├── trace_agent.py     # Distributed Trace Agent Node
-│   ├── knowledge_agent.py # Knowledge Runbook Agent Node
+│   ├── metrics_agent.py   # Prometheus Metrics Agent Node Wrapper
+│   ├── logs_agent.py      # Loki Logs Agent Node Wrapper
+│   ├── trace_agent.py     # Distributed Trace Agent Node Wrapper
+│   ├── knowledge_agent.py # Knowledge Runbook Agent Node Wrapper
 │   └── synthesizer.py     # Root Cause Synthesizer Node
-└── graph.py               # 原生 StateGraph 组装 (含 Fan-Out / MemorySaver Checkpointer)
+└── graph.py               # 原生 StateGraph 组装 (add_conditional_edges 并发路由 + MemorySaver)
 ```
 
 ---
@@ -173,5 +188,5 @@ uv run pytest
 ### 7.2 自动化单元测试 (`tests/runtime/`)
 1. **`test_schema.py`**：验证 `BlackboardState` 的并发 Reducer 与 Pydantic 模型 Validation。
 2. **`test_mcp_tools.py`**：验证 `InjectedToolCallId` 与 `ToolMessage` 的正确生成及 MCP 通信。
-3. **`test_agents.py`**：验证 Supervisor 的并发派发决策 (`next_steps`) 与各 Specialist 节点的降噪 Evidence 提取。
+3. **`test_agents.py`**：验证 Node Wrapper 函数返回标准 `dict[str, Any]`。
 4. **`test_graph_workflow.py`**：测试含 `MemorySaver` Checkpointer 的 `run_diagnosis_workflow()`，验证 Round 1 并行派发 ➔ Round 2 深度定向 ➔ 导出 `DiagnosisReport` 的全流程。
