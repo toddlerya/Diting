@@ -3,7 +3,7 @@ from typing import Any
 
 from loguru import logger
 
-from runtime.agents.utils import format_evidences_for_prompt
+from runtime.agents.utils import format_evidences_for_prompt, has_fallback_evidence
 from runtime.llm import get_llm
 from runtime.prompts import SYNTHESIZER_PROMPT
 from runtime.schema import BlackboardState, DiagnosisReport
@@ -59,12 +59,18 @@ def synthesizer_node(state: BlackboardState) -> dict[str, Any]:
         entities = state.get("suspect_entities", ["unknown-service"])
         target = entities[0] if entities else "unknown-service"
 
+        fallback_note = ""
+        if has_fallback_evidence(evidences):
+            fallback_note = (
+                " [WARNING: contains fallback evidence — MCP sources partially unreachable, "
+                "root cause inferred from placeholder data and must be verified manually.]"
+            )
         report = DiagnosisReport(
             root_cause_entity=target,
             failure_type="CPU_BURST",
-            confidence=0.92,
+            confidence=0.92 if not fallback_note else 0.4,
             evidence_ids=ev_ids,
-            summary=f"Incident root cause isolated to {target} due to CPU burst and exception stack trace.",
+            summary=f"Incident root cause isolated to {target} due to CPU burst and exception stack trace.{fallback_note}",
             recommended_actions=[
                 f"Restart pod for {target}",
                 "Apply CPU limit patch",

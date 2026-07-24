@@ -10,4 +10,8 @@ def knowledge_node(state: BlackboardState) -> dict[str, Any]:
         "runbook_id": ev.details.get("runbook_id", "RB-102"),
         "title": ev.details.get("title", "High CPU Recovery Procedure"),
     }
-    return {"evidences": [ev], "messages": [msg], "matched_runbooks": [runbook_info]}
+    return {
+        "evidences": [ev],
+        "messages": [msg],
+        "matched_runbooks": [runbook_info],
+    }

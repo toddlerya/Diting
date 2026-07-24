@@ -2,11 +2,12 @@ import asyncio
 import json
 import logging
 import uuid
+import weakref
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Any
 
 from langchain_core.messages import ToolMessage
-from langchain_core.tools import BaseTool, InjectedToolCallId
+from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from runtime.schema import Evidence
@@ -34,7 +35,11 @@ DEFAULT_MCP_SERVERS = {
 }
 
 _client_instance: MultiServerMCPClient | None = None
-_tools_map_cache: dict[int, dict[str, BaseTool]] = {}
+# WeakKeyDictionary 让临时 client（如测试传入的无效地址 client）随 GC 自动回收缓存，
+# 避免长期运行时按 id() 累积导致泄漏。默认单例 client 的缓存由 reset_mcp_tools_cache 清理。
+_tools_map_cache: weakref.WeakKeyDictionary[MultiServerMCPClient, dict[str, BaseTool]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def get_mcp_client(
@@ -61,11 +66,10 @@ async def get_cached_mcp_tools_map(
 ) -> dict[str, BaseTool]:
     """通过 MultiServerMCPClient 加载并缓存工具映射表（按 client 实例隔离）。"""
     c = client or get_mcp_client()
-    cid = id(c)
-    if cid not in _tools_map_cache:
+    if c not in _tools_map_cache:
         tools = await c.get_tools()
-        _tools_map_cache[cid] = {t.name: t for t in tools}
-    return _tools_map_cache[cid]
+        _tools_map_cache[c] = {t.name: t for t in tools}
+    return _tools_map_cache[c]
 
 
 async def load_all_mcp_tools(client: MultiServerMCPClient | None = None) -> list[BaseTool]:
@@ -92,17 +96,28 @@ def _parse_mcp_block_result(raw_result: Any) -> Any:
     return raw_result
 
 
+_nest_asyncio_applied = False
+
+
 def _run_coro_sync(coro):
-    """在同步函数中安全执行异步协程。"""
+    """在同步函数中安全执行异步协程。
+
+    当已在运行的事件循环内被同步调用时（如 LangGraph 的同步节点路径），
+    使用 nest_asyncio 允许嵌套 run_until_complete；nest_asyncio.apply() 是全局补丁，
+    模块级只调用一次以避免重复 patch 的开销与副作用。
+    """
+    global _nest_asyncio_applied
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
 
     if loop and loop.is_running():
-        import nest_asyncio
+        if not _nest_asyncio_applied:
+            import nest_asyncio
 
-        nest_asyncio.apply()
+            nest_asyncio.apply()
+            _nest_asyncio_applied = True
         return loop.run_until_complete(coro)
     return asyncio.run(coro)
 
@@ -137,14 +152,15 @@ async def aquery_metrics_tool(
     except Exception as exc:
         logger.warning(f"Prometheus MCP query failed: {exc}, using fallback response")
 
-    summary = f"Prometheus query '{query}' for {entity_id}: detected CPU/memory spike"
+    summary = f"Prometheus query '{query}' for {entity_id}: [FALLBACK] MCP unreachable, synthesized placeholder CPU/memory spike"
     ev = Evidence(
         id=f"ev-metric-{uuid.uuid4().hex[:6]}",
         source="metric",
         entity_id=entity_id,
         timestamp=datetime.now(UTC).isoformat(),
         summary=summary,
-        details={"query": query, "metric_val": 92.5},
+        relevance_score=0.0,
+        details={"query": query, "metric_val": 92.5, "is_fallback": True},
     )
     return ev, ToolMessage(content=summary, tool_call_id=call_id)
 
@@ -153,7 +169,7 @@ def query_metrics_tool(
     entity_id: str,
     query: str,
     session_id: str = "session-demo",
-    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
     """查询 Prometheus MCP 指标服务并生成 Evidence 与 ToolMessage (同步入口)。"""
@@ -204,16 +220,18 @@ async def aquery_logs_tool(
     except Exception as exc:
         logger.warning(f"Loki MCP query failed: {exc}, using fallback response")
 
-    summary = f"Loki log query '{query}' for {entity_id}: found NullPointerException stack trace"
+    summary = f"Loki log query '{query}' for {entity_id}: [FALLBACK] MCP unreachable, synthesized placeholder NPE stack trace"
     ev = Evidence(
         id=f"ev-log-{uuid.uuid4().hex[:6]}",
         source="log",
         entity_id=entity_id,
         timestamp=datetime.now(UTC).isoformat(),
         summary=summary,
+        relevance_score=0.0,
         details={
             "query": query,
             "log_line": "ERROR java.lang.NullPointerException at OrderController.java:42",
+            "is_fallback": True,
         },
     )
     return ev, ToolMessage(content=summary, tool_call_id=call_id)
@@ -223,7 +241,7 @@ def query_logs_tool(
     entity_id: str,
     query: str,
     session_id: str = "session-demo",
-    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
     """查询 Loki MCP 日志服务并生成 Evidence 与 ToolMessage (同步入口)。"""
@@ -268,14 +286,15 @@ async def aquery_trace_tool(
     except Exception as exc:
         logger.warning(f"Trace MCP query failed: {exc}, using fallback response")
 
-    summary = f"Trace query '{trace_id}' for {entity_id}: span latency exceeded 2500ms"
+    summary = f"Trace query '{trace_id}' for {entity_id}: [FALLBACK] MCP unreachable, synthesized placeholder span latency exceeding 2500ms"
     ev = Evidence(
         id=f"ev-trace-{uuid.uuid4().hex[:6]}",
         source="trace",
         entity_id=entity_id,
         timestamp=datetime.now(UTC).isoformat(),
         summary=summary,
-        details={"trace_id": trace_id, "duration_ms": 2540.0},
+        relevance_score=0.0,
+        details={"trace_id": trace_id, "duration_ms": 2540.0, "is_fallback": True},
     )
     return ev, ToolMessage(content=summary, tool_call_id=call_id)
 
@@ -284,7 +303,7 @@ def query_trace_tool(
     entity_id: str,
     trace_id: str,
     session_id: str = "session-demo",
-    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
     """查询 Trace MCP 服务并生成 Evidence 与 ToolMessage (同步入口)。"""
@@ -342,14 +361,19 @@ async def aquery_knowledge_tool(
     except Exception as exc:
         logger.warning(f"Knowledge MCP query failed: {exc}, using fallback response")
 
-    summary = f"Knowledge base runbook search '{query}': Matched High CPU Runbook RB-102"
+    summary = f"Knowledge base runbook search '{query}': [FALLBACK] MCP unreachable, matched placeholder runbook RB-102"
     ev = Evidence(
         id=f"ev-kb-{uuid.uuid4().hex[:6]}",
         source="runbook",
         entity_id="system",
         timestamp=datetime.now(UTC).isoformat(),
         summary=summary,
-        details={"runbook_id": "RB-102", "title": "High CPU Recovery Procedure"},
+        relevance_score=0.0,
+        details={
+            "runbook_id": "RB-102",
+            "title": "High CPU Recovery Procedure",
+            "is_fallback": True,
+        },
     )
     return ev, ToolMessage(content=summary, tool_call_id=call_id)
 
@@ -357,7 +381,7 @@ async def aquery_knowledge_tool(
 def query_knowledge_tool(
     query: str,
     session_id: str = "session-demo",
-    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+    tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
     """检索 Knowledge MCP 服务并生成 Evidence 与 ToolMessage (同步入口)。"""

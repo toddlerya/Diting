@@ -22,14 +22,20 @@ VALID_NODES = {
 
 
 def route_supervisor(state: BlackboardState) -> list[str]:
-    """根据 Supervisor 输出的 next_steps 进行动态扇出条件路由。"""
+    """根据 Supervisor 输出的 next_steps 进行动态扇出条件路由。
+
+    终止判定的轮次语义：`current_round` 在 Supervisor 节点入口即 +1，故扇出时读到的
+    `current_round` 表示"本轮编号"。`current_round - 1 >= max_rounds` 表示已完成 max_rounds
+    轮 Specialist 派发，强制进入 Synthesizer，避免 off-by-one 把上限多跑一轮。
+    """
     raw_steps = state.get("next_steps", [])
     valid_steps = [s for s in raw_steps if s in VALID_NODES]
     status = state.get("status", "RUNNING")
     curr_round = state.get("current_round", 1)
     max_rounds = state.get("max_rounds", 5)
 
-    if status == "COMPLETED" or curr_round > max_rounds or "Synthesizer" in valid_steps:
+    rounds_consumed = curr_round - 1
+    if status == "COMPLETED" or rounds_consumed >= max_rounds or "Synthesizer" in valid_steps:
         return ["Synthesizer"]
     return valid_steps if valid_steps else ["Synthesizer"]
 

@@ -12,7 +12,7 @@ class Evidence(BaseModel):
     timestamp: str  # ISO 8601 UTC string (+00:00)
     summary: str
     details: dict = Field(default_factory=dict)
-    relevance_score: float = 1.0
+    relevance_score: float = 1.0  # fallback 证据置 0.0，避免被当作真实事实
 
 
 class DiagnosisReport(BaseModel):
