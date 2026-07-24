@@ -11,13 +11,39 @@ def test_full_diagnosis_workflow():
     assert result["status"] == "COMPLETED"
     assert result["diagnosis_report"] is not None
     assert result["diagnosis_report"].root_cause_entity == "order-service"
-    assert len(result["evidences"]) >= 4
+    assert len(result["evidences"]) == 5
     assert len(result["matched_runbooks"]) >= 1
 
 
 def test_graph_structure_compilation():
     graph = build_diagnosis_graph()
     assert graph is not None
+
+
+def test_memory_saver_checkpoint_state_inspection():
+    alert = {
+        "alert_name": "HighMemoryUsage",
+        "service": "payment-service",
+        "timestamp": "2026-07-24T00:00:00+00:00",
+    }
+    graph = build_diagnosis_graph()
+    config = {"configurable": {"thread_id": "checkpoint-thread-002"}}
+    initial_state = {
+        "messages": [],
+        "incident_alert": alert,
+        "suspect_entities": ["payment-service"],
+        "evidences": [],
+        "matched_runbooks": [],
+        "current_round": 1,
+        "max_rounds": 5,
+        "next_steps": [],
+        "diagnosis_report": None,
+        "status": "RUNNING",
+    }
+    graph.invoke(initial_state, config=config)
+    snapshot = graph.get_state(config)
+    assert snapshot.values["status"] == "COMPLETED"
+    assert snapshot.values["diagnosis_report"].root_cause_entity == "payment-service"
 
 
 def test_route_supervisor_invalid_node_filtering():
