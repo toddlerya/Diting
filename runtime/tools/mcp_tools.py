@@ -125,7 +125,7 @@ def _run_coro_sync(coro):
 async def aquery_metrics_tool(
     entity_id: str,
     query: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
@@ -168,7 +168,7 @@ async def aquery_metrics_tool(
 def query_metrics_tool(
     entity_id: str,
     query: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
@@ -187,7 +187,7 @@ def query_metrics_tool(
 async def aquery_logs_tool(
     entity_id: str,
     query: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
@@ -240,7 +240,7 @@ async def aquery_logs_tool(
 def query_logs_tool(
     entity_id: str,
     query: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
@@ -259,7 +259,7 @@ def query_logs_tool(
 async def aquery_trace_tool(
     entity_id: str,
     trace_id: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
@@ -302,7 +302,7 @@ async def aquery_trace_tool(
 def query_trace_tool(
     entity_id: str,
     trace_id: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
@@ -320,7 +320,7 @@ def query_trace_tool(
 
 async def aquery_knowledge_tool(
     query: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:
@@ -380,7 +380,7 @@ async def aquery_knowledge_tool(
 
 def query_knowledge_tool(
     query: str,
-    session_id: str = "session-demo",
+    session_id: str = "demo_session",
     tool_call_id: str = "",
     client: MultiServerMCPClient | None = None,
 ) -> tuple[Evidence, ToolMessage]:

@@ -2,7 +2,59 @@ import json
 import warnings
 from datetime import UTC, datetime
 
+import httpx
+
 from runtime.graph import build_diagnosis_graph
+
+
+def fetch_active_alert(
+    state_server_url: str = "http://127.0.0.1:8000",
+    session_id: str = "demo_session",
+) -> dict:
+    """从 StateServer 拉取当前 Session 物理推演产生的告警（优先 firing，次选 resolved），无法连通时回退至 Mock 数据。"""
+    url = f"{state_server_url}/api/v1/alerts"
+    for status in ("firing", "resolved"):
+        try:
+            response = httpx.get(
+                url, params={"session_id": session_id, "status": status}, timeout=2.0
+            )
+            response.raise_for_status()
+            alerts = response.json()
+            if alerts and isinstance(alerts, list):
+                raw_alert = alerts[0]
+                labels = raw_alert.get("labels", {})
+                annotations = raw_alert.get("annotations", {})
+                print(
+                    f"\033[1;32m✓ 成功从 StateServer ({state_server_url}) 实时获取到物理推演告警 (status={status})！\033[0m"
+                )
+                return {
+                    "session_id": session_id,
+                    "alert_id": "ALT-LIVE-001",
+                    "alert_name": labels.get("alertname", "UnknownAlert"),
+                    "service": labels.get("service", "unknown-service"),
+                    "severity": labels.get("severity", "CRITICAL"),
+                    "status": status,
+                    "timestamp": raw_alert.get("startsAt") or datetime.now(UTC).isoformat(),
+                    "trace_id": raw_alert.get("trace_id", "tr_fail_1"),
+                    "description": annotations.get("summary", "StateServer active alert"),
+                }
+        except Exception as exc:
+            print(
+                f"\033[1;33m[提示] 尝试从 StateServer ({url}) 获取 {status} 告警失败: {exc}\033[0m"
+            )
+
+    print("\033[1;33m>>> 使用本地保底 Mock 告警数据进行演示...\033[0m\n")
+
+    return {
+        "session_id": session_id,
+        "alert_id": "ALT-FALLBACK-001",
+        "alert_name": "HighCpuUsageAndLatencySpike",
+        "service": "order-service",
+        "severity": "CRITICAL",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "trace_id": "tr-88902",
+        "description": "OrderService container CPU usage > 90%, response latency > 2000ms",
+    }
 
 
 def print_ascii_banner():
@@ -17,17 +69,12 @@ def main():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     print_ascii_banner()
 
-    # 1. 模拟微服务告警接入
+    # 1. 监控告警接入（支持从 StateServer HTTP API 动态拉取）
     print("\033[1;33m[1/3] 收到监控警报 (Alert Ingress)... \033[0m")
-    alert_event = {
-        "alert_id": "ALT-20260724-001",
-        "alert_name": "HighCpuUsageAndLatencySpike",
-        "service": "order-service",
-        "severity": "CRITICAL",
-        "timestamp": datetime.now(UTC).isoformat(),
-        "trace_id": "tr-88902",
-        "description": "OrderService container CPU usage > 90%, response latency > 2000ms",
-    }
+    alert_event = fetch_active_alert(
+        state_server_url="http://127.0.0.1:8000",
+        session_id="demo_session",
+    )
     print(json.dumps(alert_event, indent=2, ensure_ascii=False))
     print("\033[1;32m✓ 告警解析完成，启动 LangGraph 状态机... \033[0m\n")
 
