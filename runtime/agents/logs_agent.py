@@ -1,3 +1,11 @@
+"""Loki 日志检索节点。
+
+当前为轻量工具执行节点：根据 suspect_entities 调用 query_logs_tool 查询异常日志，
+将结果写入 evidences。不含 LLM 推理，由 Supervisor 决定何时以及针对哪些实体调用。
+
+后续如需深度日志分析（如自动提取异常模式、跨实体日志关联），
+可在此模块中引入 LLM 调用，升级为完整 Agent。"""
+
 from typing import Any
 
 from runtime.agents.utils import get_target_entities

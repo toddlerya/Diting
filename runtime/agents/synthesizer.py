@@ -1,3 +1,11 @@
+"""诊断报告合成 / Synthesizer Agent 节点。
+
+完整 LLM Agent：使用 SYNTHESIZER_PROMPT + with_structured_output(DiagnosisReport)
+聚合全部 evidences 生成结构化根因分析报告。
+
+当前功能：一次性综合分析。后续可扩展为多轮报告修订、交互式追问、
+或基于置信度阈值选择不同分析路径。"""
+
 import json
 from typing import Any
 

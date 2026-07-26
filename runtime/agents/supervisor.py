@@ -1,3 +1,11 @@
+"""编排器 / Supervisor Agent 节点。
+
+完整 LLM Agent：使用 SUPERVISOR_PROMPT + with_structured_output(SupervisorDecision)
+决定下一轮派发哪些 Specialist 节点以及更新 suspect_entities。
+
+当前功能：多轮并行派发逻辑。后续可扩展为更复杂的编排策略
+（如基于置信度的动态终止、优先级队列、人机协同审批）。"""
+
 import json
 from typing import Any
 
