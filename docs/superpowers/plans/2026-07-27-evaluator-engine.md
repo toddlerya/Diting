@@ -50,10 +50,12 @@ def test_timeline_event_creation():
         entity_id="Node-1",
         metric_name="disk_util",
         expected_value=0.96,
+        expected_timestamp="2026-07-27T00:00:15+00:00",
         log_keyword="Disk utility threshold exceeded",
     )
     assert event.tick == 15
     assert event.expected_value == 0.96
+    assert event.expected_timestamp.endswith("+00:00")
 
 def test_ground_truth_from_scenario():
     data = {
@@ -75,8 +77,7 @@ def test_ground_truth_from_scenario():
         },
         "steps": [],
     }
-    sc = Scenario.from_dict(data) if hasattr(Scenario, "from_dict") else Scenario("test_scenario", "desc", [], seed=42)
-    sc.ground_truth_data = data["ground_truth"]
+    sc = Scenario("test_scenario", "desc", [], seed=42, ground_truth_data=data["ground_truth"])
     gt = GroundTruth.from_scenario(sc)
     assert gt.root_cause_service == "PaymentService"
     assert gt.failure_type == "REDIS_POOL_LEAK"
@@ -108,19 +109,40 @@ def test_evaluation_scorecard_status():
 运行：`uv run pytest tests/evaluator/test_schema.py`
 预期：失败，提示 `ModuleNotFoundError: No module named 'evaluator'`。
 
-- [ ] **Step 3: 修改 `simulator/scenario.py` 保存原 JSON/YAML 数据**
-
-在 `simulator/scenario.py` 的 `from_yaml` 中，将解析到的 `data.get("ground_truth", {})` 保存到 `scenario.ground_truth_data` 属性。
+- [ ] **Step 3: 修改 `simulator/scenario.py` 在 `from_yaml` 中传入 `ground_truth_data`**
 
 ```python
 # simulator/scenario.py
 class Scenario:
-    def __init__(self, name: str, description: str, steps: list[dict[str, Any]], seed: int = 42, ground_truth_data: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        steps: list[dict[str, Any]],
+        seed: int = 42,
+        ground_truth_data: dict[str, Any] | None = None,
+    ):
         self.name = name
         self.description = description
         self.steps = steps
         self.seed = seed
         self.ground_truth_data = ground_truth_data or {}
+
+    @classmethod
+    def from_yaml(cls, filepath: str) -> "Scenario":
+        path = Path(filepath).resolve()
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+
+        # ... (保留现有 includes 与 steps 加载)
+
+        return cls(
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            steps=steps,
+            seed=data.get("seed", 42),
+            ground_truth_data=data.get("ground_truth", {}),
+        )
 ```
 
 - [ ] **Step 4: 实现 `evaluator/schema.py`**
@@ -137,6 +159,7 @@ class TimelineEvent(BaseModel):
     entity_id: str
     metric_name: str | None = None
     expected_value: float | None = None
+    expected_timestamp: str | None = None
     log_keyword: str | None = None
     description: str = ""
 
@@ -194,7 +217,7 @@ class EvaluationScorecard(BaseModel):
 - [ ] **Step 6: 提交 Git**
 
 ```bash
-git add evaluator/ __init__.py evaluator/schema.py simulator/scenario.py tests/evaluator/__init__.py tests/evaluator/test_schema.py
+git add evaluator/ simulator/scenario.py tests/evaluator/
 git commit -m "feat(evaluator): add GroundTruth and EvaluationScorecard schemas"
 ```
 
@@ -210,7 +233,7 @@ git commit -m "feat(evaluator): add GroundTruth and EvaluationScorecard schemas"
 - Consumes: `runtime.schema.DiagnosisReport`, `evaluator.schema.GroundTruth`
 - Produces: `RootCauseEvaluator.evaluate(report, ground_truth) -> DimensionScore`
 
-- [ ] **Step 1: 编写 Root Cause Evaluator 的失败测试**
+- [ ] **Step 1: 编写 Root Cause Evaluator 的失败测试（含完全不匹配用例）**
 
 ```python
 # tests/evaluator/test_root_cause.py
@@ -254,8 +277,26 @@ def test_root_cause_service_match():
     )
     evaluator = RootCauseEvaluator()
     score = evaluator.evaluate(report, gt)
-    # Entity score: 0.6, type score: 1.0, total raw: (0.6*0.6 + 0.4*1.0) * 0.8 = (0.36+0.4)*0.8 = 0.608
     assert abs(score.raw_score - 0.608) < 1e-4
+
+def test_root_cause_no_match():
+    gt = GroundTruth(
+        scenario_name="redis_leak",
+        root_cause_service="PaymentService",
+        root_cause_entity="PaymentService-RedisPool",
+        failure_type="REDIS_POOL_LEAK",
+    )
+    report = DiagnosisReport(
+        root_cause_entity="UserService",
+        failure_type="CPU_BURST",
+        confidence=0.9,
+        evidence_ids=["ev-1"],
+        summary="Wrong entity and failure type",
+    )
+    evaluator = RootCauseEvaluator()
+    score = evaluator.evaluate(report, gt)
+    assert score.raw_score == 0.0
+    assert score.weighted_score == 0.0
 ```
 
 - [ ] **Step 2: 运行测试验证失败**
@@ -515,7 +556,7 @@ git commit -m "feat(evaluator): implement PathRecallEvaluator"
 - Consumes: `runtime.schema.BlackboardState`, `evaluator.schema.GroundTruth`
 - Produces: `AntiHallucinationEvaluator.evaluate(state, ground_truth) -> DimensionScore`
 
-- [ ] **Step 1: 编写 Anti-Hallucination Evaluator 的失败测试**
+- [ ] **Step 1: 编写 Anti-Hallucination Evaluator 的失败测试（包含关键字、数值相对误差 ≤10% 及 ISO 时间戳差值校验）**
 
 ```python
 # tests/evaluator/test_anti_hallucination.py
@@ -524,28 +565,43 @@ from evaluator.anti_hallucination import AntiHallucinationEvaluator
 from evaluator.schema import GroundTruth, TimelineEvent
 from runtime.schema import BlackboardState, Evidence
 
-def test_anti_hallucination_valid_evidence():
+def test_anti_hallucination_valid_metric_and_log():
     gt = GroundTruth(
         scenario_name="redis_leak",
         root_cause_service="PaymentService",
         root_cause_entity="PaymentService-RedisPool",
         failure_type="REDIS_POOL_LEAK",
         timeline=[
-            TimelineEvent(tick=10, entity_id="PaymentService", log_keyword="Timeout waiting for connection")
+            TimelineEvent(
+                tick=10,
+                entity_id="PaymentService",
+                metric_name="active_connections",
+                expected_value=50.0,
+                expected_timestamp="2026-07-27T00:00:10+00:00",
+                log_keyword="Timeout waiting for connection",
+            )
         ],
     )
-    ev = Evidence(
+    ev_log = Evidence(
         id="ev-1",
         source="log",
         entity_id="PaymentService",
-        timestamp="2026-07-27T00:00:00+00:00",
+        timestamp="2026-07-27T00:00:12+00:00",  # 2 seconds delta (within +-5s)
         summary="Timeout waiting for connection after 500ms",
+    )
+    ev_metric = Evidence(
+        id="ev-2",
+        source="metric",
+        entity_id="PaymentService",
+        timestamp="2026-07-27T00:00:10+00:00",
+        summary="High active connections",
+        details={"value": 52.0},  # (52-50)/50 = 4% relative error (within <=10%)
     )
     state: BlackboardState = {
         "messages": [],
         "incident_alert": {},
         "suspect_entities": [],
-        "evidences": [ev],
+        "evidences": [ev_log, ev_metric],
         "matched_runbooks": [],
         "current_round": 1,
         "max_rounds": 5,
@@ -558,18 +614,34 @@ def test_anti_hallucination_valid_evidence():
     assert score.raw_score == 1.0
     assert score.weighted_score == 25.0
 
-def test_anti_hallucination_empty_evidences():
+def test_anti_hallucination_numerical_error_exceeded():
     gt = GroundTruth(
-        scenario_name="test",
-        root_cause_service="S1",
-        root_cause_entity="E1",
-        failure_type="F1",
+        scenario_name="redis_leak",
+        root_cause_service="PaymentService",
+        root_cause_entity="PaymentService-RedisPool",
+        failure_type="REDIS_POOL_LEAK",
+        timeline=[
+            TimelineEvent(
+                tick=10,
+                entity_id="PaymentService",
+                metric_name="active_connections",
+                expected_value=50.0,
+            )
+        ],
+    )
+    ev_fake = Evidence(
+        id="ev-fake",
+        source="metric",
+        entity_id="PaymentService",
+        timestamp="2026-07-27T00:00:10+00:00",
+        summary="Hallucinated connection metric",
+        details={"value": 90.0},  # (90-50)/50 = 80% error (>10%)
     )
     state: BlackboardState = {
         "messages": [],
         "incident_alert": {},
         "suspect_entities": [],
-        "evidences": [],
+        "evidences": [ev_fake],
         "matched_runbooks": [],
         "current_round": 1,
         "max_rounds": 5,
@@ -587,16 +659,19 @@ def test_anti_hallucination_empty_evidences():
 运行：`uv run pytest tests/evaluator/test_anti_hallucination.py`
 预期：失败，提示 `ModuleNotFoundError: No module named 'evaluator.anti_hallucination'`。
 
-- [ ] **Step 3: 实现 `evaluator/anti_hallucination.py`**
+- [ ] **Step 3: 实现 `evaluator/anti_hallucination.py`（包含三阶绝无粗暴过滤打假逻辑）**
 
 ```python
 # evaluator/anti_hallucination.py
+from datetime import datetime
 from evaluator.schema import DimensionScore, GroundTruth
-from runtime.schema import BlackboardState
+from runtime.schema import BlackboardState, Evidence
 
 
 class AntiHallucinationEvaluator:
     WEIGHT = 0.25
+    MAX_TIME_DELTA_SEC = 5.0
+    MAX_METRIC_VALUE_ERROR = 0.10  # 10%
 
     def evaluate(self, state: BlackboardState, gt: GroundTruth) -> DimensionScore:
         evidences = state.get("evidences", [])
@@ -615,24 +690,52 @@ class AntiHallucinationEvaluator:
 
         for ev in evidences:
             is_valid = False
-            # Check against timeline events
+            reason = "unmatched"
+
             for te in gt.timeline:
-                if te.entity_id.lower() in ev.entity_id.lower() or ev.entity_id.lower() in te.entity_id.lower():
-                    # Keyword check
-                    if te.log_keyword and te.log_keyword.lower() in ev.summary.lower():
-                        is_valid = True
-                        break
-                    if te.metric_name and te.metric_name.lower() in ev.summary.lower():
-                        is_valid = True
-                        break
+                # 1. Check entity match
+                if not (te.entity_id.lower() in ev.entity_id.lower() or ev.entity_id.lower() in te.entity_id.lower()):
+                    continue
+
+                # 2. Timestamp delta check if timestamps present
+                if te.expected_timestamp and ev.timestamp:
+                    try:
+                        t_event = datetime.fromisoformat(te.expected_timestamp)
+                        t_evidence = datetime.fromisoformat(ev.timestamp)
+                        delta = abs((t_evidence - t_event).total_seconds())
+                        if delta > self.MAX_TIME_DELTA_SEC:
+                            reason = f"timestamp delta {delta:.1f}s exceeded {self.MAX_TIME_DELTA_SEC}s"
+                            continue
+                    except Exception:
+                        pass
+
+                # 3. Metric Value Error check
+                if ev.source == "metric" and te.expected_value is not None:
+                    val = ev.details.get("value")
+                    if val is not None:
+                        rel_error = abs(val - te.expected_value) / abs(te.expected_value) if te.expected_value != 0 else abs(val)
+                        if rel_error <= self.MAX_METRIC_VALUE_ERROR:
+                            is_valid = True
+                            reason = f"value matched (rel error: {rel_error:.2%})"
+                            break
+                        else:
+                            reason = f"value error {rel_error:.2%} exceeded {self.MAX_METRIC_VALUE_ERROR:.0%}"
+                            continue
+
+                # 4. Log Keyword check
+                if te.log_keyword and te.log_keyword.lower() in ev.summary.lower():
+                    is_valid = True
+                    reason = f"keyword matched '{te.log_keyword}'"
+                    break
 
             # Fallback heuristic: If evidence contains non-empty valid summary and entity_id
-            if not is_valid and ev.entity_id and ev.summary and ev.relevance_score >= 0.5:
+            if not is_valid and reason == "unmatched" and ev.entity_id and ev.summary and ev.relevance_score >= 0.5:
                 is_valid = True
+                reason = "heuristic valid summary"
 
             if is_valid:
                 valid_count += 1
-            details_list.append({"evidence_id": ev.id, "is_valid": is_valid, "summary": ev.summary})
+            details_list.append({"evidence_id": ev.id, "is_valid": is_valid, "reason": reason, "summary": ev.summary})
 
         raw_score = valid_count / total_count if total_count > 0 else 0.0
         weighted_score = raw_score * self.WEIGHT * 100.0
@@ -659,7 +762,7 @@ class AntiHallucinationEvaluator:
 
 ```bash
 git add evaluator/anti_hallucination.py tests/evaluator/test_anti_hallucination.py
-git commit -m "feat(evaluator): implement AntiHallucinationEvaluator"
+git commit -m "feat(evaluator): implement AntiHallucinationEvaluator with numerical and timestamp tolerances"
 ```
 
 ---
@@ -831,7 +934,6 @@ def test_evaluator_engine_full_flow():
 ```python
 # evaluator/engine.py
 import os
-from typing import Any
 from evaluator.anti_hallucination import AntiHallucinationEvaluator
 from evaluator.efficiency import EfficiencyEvaluator
 from evaluator.path_recall import PathRecallEvaluator
@@ -915,18 +1017,19 @@ git commit -m "feat(evaluator): assemble EvaluatorEngine with threshold and scor
 
 ---
 
-### Task 7: E2E 演示脚本与全量 Ruff / Pytest 验证
+### Task 7: E2E 演示脚本、README 更新与全量 Ruff / Pytest 验证
 
 **Files:**
 - Create: `run_eval_demo.py`
 - Modify: `README.md`
 - Test: 全量 pytest 测试集与 Ruff 检查
 
-- [ ] **Step 1: 实现 `run_eval_demo.py` 全链路 E2E 脚本**
+- [ ] **Step 1: 实现 `run_eval_demo.py` 全链路 E2E 脚本（基于 YAML 字符串解耦转换解析）**
 
 ```python
 # run_eval_demo.py
-import json
+import tempfile
+import yaml
 from evaluator.engine import EvaluatorEngine
 from runtime.graph import run_diagnosis_workflow
 from simulator.scenario import Scenario
@@ -937,27 +1040,38 @@ def main():
     print("🐕 Diting (谛听) - Day 6 Evaluation Engine E2E Demo")
     print("=" * 60)
 
-    # 1. 加载包含 Ground Truth 的故障剧本
-    sc_data = {
-        "name": "payment_redis_exhaust_cascade",
-        "description": "PaymentService Redis Connection Pool Exhaustion Cascade Failure",
-        "ground_truth": {
-            "root_cause_service": "PaymentService",
-            "root_cause_entity": "PaymentService-RedisPool",
-            "failure_type": "REDIS_POOL_LEAK",
-            "expected_tools": ["query_metrics", "query_logs"],
-            "expected_services": ["Gateway", "PaymentService"],
-            "timeline": [
-                {
-                    "tick": 10,
-                    "entity_id": "PaymentService",
-                    "log_keyword": "Timeout waiting for connection",
-                }
-            ],
-        },
-        "steps": [],
-    }
-    scenario = Scenario("payment_redis_exhaust_cascade", "PaymentService Redis Leak", [], seed=42, ground_truth_data=sc_data["ground_truth"])
+    # 1. 动态生成带有 Ground Truth 节的场景 YAML 文件，验证 Scenario.from_yaml(...) 全链路
+    sc_yaml_content = """
+name: payment_redis_exhaust_cascade
+description: PaymentService Redis Connection Pool Exhaustion Cascade Failure
+seed: 42
+ground_truth:
+  root_cause_service: PaymentService
+  root_cause_entity: PaymentService-RedisPool
+  failure_type: REDIS_POOL_LEAK
+  expected_tools:
+    - query_metrics
+    - query_logs
+  expected_services:
+    - Gateway
+    - PaymentService
+  timeline:
+    - tick: 10
+      entity_id: PaymentService
+      metric_name: active_connections
+      expected_value: 50.0
+      expected_timestamp: "2026-07-27T00:00:10+00:00"
+      log_keyword: Timeout waiting for connection
+steps: []
+"""
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write(sc_yaml_content)
+        temp_path = f.name
+
+    print("\n[1/3] Loading Scenario via Scenario.from_yaml()...")
+    scenario = Scenario.from_yaml(temp_path)
+    print(f"  - Loaded Scenario Name: {scenario.name}")
+    print(f"  - Ground Truth Root Cause Entity: {scenario.ground_truth_data.get('root_cause_entity')}")
 
     # 2. 模拟 Firing Alert 触发展开 LangGraph 故障诊断
     alert = {
@@ -965,15 +1079,15 @@ def main():
         "service": "Gateway",
         "severity": "CRITICAL",
     }
-    print("\n[1/3] Running LangGraph Multi-Agent Diagnosis Workflow...")
+    print("\n[2/3] Running LangGraph Multi-Agent Diagnosis Workflow...")
     final_state = run_diagnosis_workflow(alert, thread_id="eval-demo-thread")
 
-    print("\n[2/3] Diagnosis Completed. Report Summary:")
     report = final_state.get("diagnosis_report")
     if report:
-        print(f"  - Root Cause Entity : {report.root_cause_entity}")
-        print(f"  - Failure Type      : {report.failure_type}")
-        print(f"  - Confidence Score  : {report.confidence:.2f}")
+        print("  - Diagnosis Completed. Report Summary:")
+        print(f"    * Root Cause Entity : {report.root_cause_entity}")
+        print(f"    * Failure Type      : {report.failure_type}")
+        print(f"    * Confidence Score  : {report.confidence:.2f}")
 
     # 3. 运行 EvaluatorEngine 自动化打分
     print("\n[3/3] Running EvaluatorEngine Benchmark Evaluation...")
@@ -998,21 +1112,25 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: 运行全量单元测试与 E2E 演示**
+- [ ] **Step 2: 在 `README.md` 中添加 Day 6 Evaluator 运行章节说明**
+
+在 `README.md` 的快速使用中添加运行 `run_eval_demo.py` 的命令与输出样例说明。
+
+- [ ] **Step 3: 运行全量单元测试与 E2E 演示**
 
 运行：
 1. `uv run python run_eval_demo.py`
 2. `uv run pytest`
 
-- [ ] **Step 3: 运行 Ruff 校验与格式化**
+- [ ] **Step 4: 运行 Ruff 校验与格式化**
 
 运行：
 1. `uv run ruff check --fix .`
 2. `uv run ruff format .`
 
-- [ ] **Step 4: 提交 Git 并结束**
+- [ ] **Step 5: 提交 Git 并结束**
 
 ```bash
 git add run_eval_demo.py README.md
-git commit -m "feat(evaluator): complete Day 6 Evaluation Engine with run_eval_demo script"
+git commit -m "feat(evaluator): complete Day 6 Evaluation Engine with run_eval_demo script and README"
 ```
