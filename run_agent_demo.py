@@ -48,12 +48,12 @@ def fetch_active_alert(
     return {
         "session_id": session_id,
         "alert_id": "ALT-FALLBACK-001",
-        "alert_name": "HighCpuUsageAndLatencySpike",
-        "service": "order-service",
+        "alert_name": "RedisConnectionExhausted",
+        "service": "PaymentService",
         "severity": "CRITICAL",
         "timestamp": datetime.now(UTC).isoformat(),
-        "trace_id": "tr-88902",
-        "description": "OrderService container CPU usage > 90%, response latency > 2000ms",
+        "trace_id": "tr_fail_1",
+        "description": "PaymentService Redis connection pool exhausted (50/50)",
     }
 
 
