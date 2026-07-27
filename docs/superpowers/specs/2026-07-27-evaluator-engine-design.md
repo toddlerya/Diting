@@ -6,8 +6,11 @@ Evaluation Engine (评估引擎) 是 Diting (谛听) 平台的 Day 6 核心模�
 
 ### 核心目标
 1. **多维自动化打分**: 涵盖根因准确率 (Root Cause Accuracy 40%)、路径召回率 (Path Recall 25%)、抗幻觉真实度 (Anti-Hallucination 25%) 及资源效率 (Efficiency 10%)。
-2. **确定性与打假逻辑**: 对 Agent 输出的 Pydantic `Evidence` 证据链进行物理事实反查与三阶过滤（时间窗口容差 $\pm 5\text{s}$、数值相对误差 $\le 10\%$、日志关键字匹配）。
-3. **单源 Ground Truth**: 与 `Scenario` YAML 保持单一事实源，通过顶层 `ground_truth:` 属性加载规则。
+2. **确定性抗幻觉校验 (核心卖点)**: 对 Agent 输出的 Pydantic `Evidence` 证据链以 `GroundTruth.timeline` 为唯一核验源进行三阶精准打假：
+   - **日志关键字匹配**: 检查 `log_keyword` 子串是否包含在 `evidence.summary` 中。
+   - **数值误差匹配**: 若证据为 `metric` 类型，提取 `evidence.details["value"]` 与 `expected_value` 计算相对误差 $\frac{|V_{\text{agent}} - V_{\text{real}}|}{V_{\text{real}}} \le 10\%$。
+   - **时间戳容差匹配**: 若提供 ISO 8601 时间戳，检查时间差 $|T_{\text{evidence}} - T_{\text{event}}| \le 5.0\text{s}$ ($\pm 50$ Ticks)。
+3. **单源 Ground Truth**: 与 `Scenario` YAML 保持单一事实源，通过顶层 `ground_truth:` 属性解析加载。
 4. **离线优先与渐进增强**: 100% 支持纯 Python 本地零依赖离线打分；检测到 LangFuse 环境时支持可选的 Post-MVP 轨迹同步。
 
 ---
@@ -19,7 +22,7 @@ Evaluation Engine (评估引擎) 是 Diting (谛听) 平台的 Day 6 核心模�
                                          │
                                          ▼
                                [ EvaluatorEngine ]
-                                         │  (读取 BlackboardState & GroundTruth)
+                                         │  (读取 BlackboardState & GroundTruth.timeline)
         ┌───────────────────────┬────────┴───────────────┬───────────────────────┐
         ▼                       ▼                        ▼                       ▼
 [ RootCauseEvaluator ] [ PathRecallEvaluator ]  [ AntiHallucinationEvaluator ] [ EfficiencyEvaluator ]
@@ -51,6 +54,7 @@ class TimelineEvent(BaseModel):
     entity_id: str
     metric_name: str | None = None
     expected_value: float | None = None
+    expected_timestamp: str | None = None  # ISO 8601 UTC 时间戳字符串
     log_keyword: str | None = None
     description: str = ""
 
@@ -123,9 +127,12 @@ class EvaluationScorecard(BaseModel):
 
 ### 4.3 抗幻觉打假 (`AntiHallucinationEvaluator` - 25% 权重)
 校验 `BlackboardState["evidences"]` 中的 `Evidence` 实例：
-* **核验源**: 与 `GroundTruth.timeline` 锚点及 `Projections` 时序快照比对。
-* **时间戳容差**: $|T_{\text{evidence}} - T_{\text{event}}| \le 5.0\text{s}$ ($\pm 50$ Ticks)。
-* **数值容差**: 指标数值相对误差 $\frac{|V_{\text{agent}} - V_{\text{real}}|}{V_{\text{real}}} \le 10\%$。
+* **核验源**: 以 `GroundTruth.timeline` 作为首期唯一真实事件源。
+* **三阶校验逻辑**:
+  1. **实体重合**: `te.entity_id` 与 `ev.entity_id` 匹配。
+  2. **数值误差**: 若存在 `expected_value` 及 `evidence.details["value"]`，核验相对误差 $\frac{|V_{\text{agent}} - V_{\text{real}}|}{V_{\text{real}}} \le 0.10$。
+  3. **日志/关键字包含**: 若存在 `log_keyword`，核验其在 `ev.summary` 中。
+  4. **时间戳容差**: 若均包含时间戳，核验 $|T_{\text{evidence}} - T_{\text{event}}| \le 5.0\text{s}$。
 * **空证据兜底**: 若无 Evidence 提交，`anti_hallucination_score` 为 0.0。
 
 ### 4.4 资源效率 (`EfficiencyEvaluator` - 10% 权重)
@@ -136,6 +143,6 @@ class EvaluationScorecard(BaseModel):
 
 ## 5. 部署与测试集成
 
-1. **E2E 演示脚本 (`run_eval_demo.py`)**: 全链路演示（Simulator 注入 -> Runtime 诊断 -> Evaluator 打分 -> 输出控制台记分卡与 Markdown 报告）。
+1. **E2E 演示脚本 (`run_eval_demo.py`)**: 全链路演示（解析 YAML Scenario -> LangGraph Runtime 诊断 -> Evaluator 打分 -> 输出控制台记分卡）。
 2. **Post-MVP 渐进增强**: LangFuse 上报封装在 `try...except ImportError` 中。
 3. **测试驱动 (TDD)**: 在 `tests/evaluator/` 编写单元测试，覆盖正常、边界及防崩溃逻辑。
