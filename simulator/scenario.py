@@ -10,11 +10,19 @@ from simulator.schema import RetryPolicyConfig
 
 
 class Scenario:
-    def __init__(self, name: str, description: str, steps: list[dict[str, Any]], seed: int = 42):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        steps: list[dict[str, Any]],
+        seed: int = 42,
+        ground_truth_data: dict[str, Any] | None = None,
+    ):
         self.name = name
         self.description = description
         self.steps = steps
         self.seed = seed
+        self.ground_truth_data = ground_truth_data or {}
 
     @classmethod
     def from_yaml(cls, filepath: str) -> "Scenario":
@@ -60,6 +68,7 @@ class Scenario:
             description=data.get("description", ""),
             steps=steps,
             seed=data.get("seed", 42),
+            ground_truth_data=data.get("ground_truth", {}),
         )
 
     def apply(
