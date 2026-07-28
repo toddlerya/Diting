@@ -243,12 +243,27 @@ Diting/
 │   └── tools/                # 标准 MCP 工具适配器 (langchain-mcp-adapters)
 │
 ├── evaluator/                # 评估模块
-│   └── evaluator.py          # 多维打分与 Ground Truth 比对
+│   ├── schema.py             # GroundTruth, DimensionScore & EvaluationScorecard Schemas
+│   ├── root_cause.py         # 根因匹配评测器 (40% 权重)
+│   ├── path_recall.py        # 路径召回率评测器 (25% 权重)
+│   ├── anti_hallucination.py # 抗幻觉真实度打假评测器 (25% 权重)
+│   ├── efficiency.py         # 资源效率评测器 (10% 权重)
+│   └── engine.py             # EvaluatorEngine 评估引擎与记分卡生成器
 │
 ├── frontend/                 # 简易 Web 监控面板
 │
 ├── run_agent_demo.py         # Agent Runtime 诊断流程 Demo 运行脚本
+├── run_eval_demo.py          # Day 6 Benchmark 评估引擎 E2E 演示脚本
 └── README.md
+```
+
+---
+
+## 🚀 运行 Evaluation Engine 评测 Demo
+
+```bash
+# 运行全链路 Benchmark 评估 Engine Demo
+uv run python run_eval_demo.py
 ```
 
 ---
