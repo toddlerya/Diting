@@ -1,3 +1,9 @@
+"""反幻觉评估器 (Anti-Hallucination Evaluator)。
+
+评估 Agent 在黑板状态中沉淀的证据 (Evidences) 是否符合物理客观事实 (GroundTruth 时间线)，
+对伪造指标、非法时间戳、虚假日志等幻觉行为进行识别与扣分 (权重 25%)。
+"""
+
 from datetime import datetime
 
 from evaluator.schema import DimensionScore, GroundTruth
@@ -5,11 +11,31 @@ from runtime.schema import BlackboardState
 
 
 class AntiHallucinationEvaluator:
+    """反幻觉与证据真实性评估器。
+
+    权重占比: 25%
+    核心校验逻辑:
+    - 实体匹配: 证据的 entity_id 必须与时间线事件相匹配。
+    - 时间戳误差: 证据时间与事件发生时间相差不得超过 MAX_TIME_DELTA_SEC (5 秒)。
+    - 指标数值误差: 指标类证据的相对误差不得超过 MAX_METRIC_VALUE_ERROR (10%)。
+    - 日志关键字: 日志类证据摘要中需成功匹配 log_keyword。
+    - 回退启发式: 若证据自身内容完整且相关度分值 >= 0.5，允许启发式判定通过。
+    """
+
     WEIGHT = 0.25
     MAX_TIME_DELTA_SEC = 5.0
     MAX_METRIC_VALUE_ERROR = 0.10  # 10%
 
     def evaluate(self, state: BlackboardState, gt: GroundTruth) -> DimensionScore:
+        """评估黑板证据的反幻觉质量与有效真实比例。
+
+        Args:
+            state: Agent 诊断过程中的黑板状态 BlackboardState。
+            gt: 当前场景的基准真值 GroundTruth。
+
+        Returns:
+            反幻觉维度的得分对象 DimensionScore。
+        """
         evidences = state.get("evidences", []) if state else []
         if not evidences:
             return DimensionScore(
@@ -29,14 +55,14 @@ class AntiHallucinationEvaluator:
             reason = "unmatched"
 
             for te in gt.timeline:
-                # 1. Check entity match
+                # 1. 实体重合性检查
                 if not (
                     te.entity_id.lower() in ev.entity_id.lower()
                     or ev.entity_id.lower() in te.entity_id.lower()
                 ):
                     continue
 
-                # 2. Timestamp delta check if timestamps present
+                # 2. 时间戳偏差校验
                 if te.expected_timestamp and ev.timestamp:
                     try:
                         t_event = datetime.fromisoformat(te.expected_timestamp)
@@ -54,7 +80,7 @@ class AntiHallucinationEvaluator:
                     except Exception:
                         pass
 
-                # 3. Metric Value Error check
+                # 3. 指标数值误差校验
                 if ev.source == "metric" and te.expected_value is not None:
                     val = ev.details.get("value")
                     if val is not None:
@@ -71,13 +97,13 @@ class AntiHallucinationEvaluator:
                             reason = f"value error {rel_error:.2%} exceeded {self.MAX_METRIC_VALUE_ERROR:.0%}"
                             continue
 
-                # 4. Log Keyword check
+                # 4. 日志关键字匹配校验
                 if te.log_keyword and te.log_keyword.lower() in ev.summary.lower():
                     is_valid = True
                     reason = f"keyword matched '{te.log_keyword}'"
                     break
 
-            # Fallback heuristic: If evidence contains non-empty valid summary and entity_id
+            # 5. 回退启发式: 若证据包含非空有效摘要且相关性得分 >= 0.5 判为有效
             if (
                 not is_valid
                 and reason == "unmatched"
