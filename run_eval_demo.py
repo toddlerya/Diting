@@ -8,7 +8,7 @@ from simulator.scenario import Scenario
 
 def main():
     print("=" * 60)
-    print("🐕 Diting (谛听) - Day 6 Evaluation Engine E2E Demo")
+    print("🐕 Diting (谛听) - Evaluation Engine E2E Demo")
     print("=" * 60)
 
     # 1. 动态生成带有 Ground Truth 节的场景 YAML 文件，验证 Scenario.from_yaml(...) 全链路
