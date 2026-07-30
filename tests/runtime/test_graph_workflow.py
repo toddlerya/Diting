@@ -107,9 +107,11 @@ def test_workflow_respects_max_rounds():
         "service": "order-service",
         "timestamp": "2026-07-24T00:00:00+00:00",
     }
-    result = run_diagnosis_workflow(alert_dict=alert, thread_id="incident-maxrounds-001")
+    result = run_diagnosis_workflow(
+        alert_dict=alert, thread_id="incident-maxrounds-001", max_rounds=1
+    )
     assert result["status"] == "COMPLETED"
-    assert result["current_round"] - 1 <= 5
+    assert result["current_round"] - 1 <= 1
 
 
 def test_fallback_evidence_lowers_synthesizer_confidence():

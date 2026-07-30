@@ -12,6 +12,8 @@ from runtime.agents.synthesizer import synthesizer_node
 from runtime.agents.trace_agent import trace_node
 from runtime.schema import BlackboardState
 
+DEFAULT_MAX_ROUNDS = 7
+
 VALID_NODES = {
     "MetricsNode",
     "LogsNode",
@@ -32,7 +34,7 @@ def route_supervisor(state: BlackboardState) -> list[str]:
     valid_steps = [s for s in raw_steps if s in VALID_NODES]
     status = state.get("status", "RUNNING")
     curr_round = state.get("current_round", 1)
-    max_rounds = state.get("max_rounds", 5)
+    max_rounds = state.get("max_rounds", DEFAULT_MAX_ROUNDS)
 
     rounds_consumed = curr_round - 1
     if status == "COMPLETED" or rounds_consumed >= max_rounds or "Synthesizer" in valid_steps:
@@ -83,7 +85,9 @@ def build_diagnosis_graph():
 
 
 def run_diagnosis_workflow(
-    alert_dict: dict[str, Any], thread_id: str = "incident-001"
+    alert_dict: dict[str, Any],
+    thread_id: str = "incident-001",
+    max_rounds: int = DEFAULT_MAX_ROUNDS,
 ) -> BlackboardState:
     """运行全流程微服务故障诊断。"""
     graph = build_diagnosis_graph()
@@ -94,7 +98,7 @@ def run_diagnosis_workflow(
         "evidences": [],
         "matched_runbooks": [],
         "current_round": 1,
-        "max_rounds": 5,
+        "max_rounds": max_rounds,
         "next_steps": [],
         "diagnosis_report": None,
         "status": "RUNNING",

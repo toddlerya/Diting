@@ -81,13 +81,22 @@ async def load_all_mcp_tools(client: MultiServerMCPClient | None = None) -> list
 def _parse_mcp_block_result(raw_result: Any) -> Any:
     """解析 langchain_mcp_adapters 返回的 ContentBlock 或 JSON 字符串。"""
     if isinstance(raw_result, list) and raw_result:
-        first = raw_result[0]
-        if isinstance(first, dict) and "text" in first:
-            text_content = first["text"]
-            try:
-                return json.loads(text_content)
-            except (json.JSONDecodeError, TypeError):
-                return text_content
+        parsed_items = []
+        is_block_list = False
+        for item in raw_result:
+            if isinstance(item, dict) and "text" in item:
+                is_block_list = True
+                text_content = item["text"]
+                try:
+                    parsed_items.append(json.loads(text_content))
+                except (json.JSONDecodeError, TypeError):
+                    parsed_items.append(text_content)
+        if is_block_list:
+            return (
+                parsed_items
+                if len(parsed_items) > 1
+                else (parsed_items[0] if parsed_items else raw_result)
+            )
     elif isinstance(raw_result, str):
         try:
             return json.loads(raw_result)
@@ -327,14 +336,18 @@ async def aquery_trace_tool(
 
             # 若直接查 trace_id 为空，自动拉取系统中真实生成的全量/慢 Trace 列表
             target_trace = trace_id
-            if (not data or data == [] or data == {}) and "search_traces" in tool_map:
+            if (
+                not trace_id
+                and (not data or data == [] or data == {})
+                and "search_traces" in tool_map
+            ):
                 st_res = await tool_map["search_traces"].ainvoke(
                     {"session_id": session_id, "min_duration_ms": 0.0}
                 )
                 st_data = _parse_mcp_block_result(st_res)
                 if isinstance(st_data, list) and len(st_data) > 0:
-                    first_trace = st_data[-1] if isinstance(st_data[-1], dict) else {}
-                    t_id = first_trace.get("trace_id")
+                    last_trace = st_data[-1] if isinstance(st_data[-1], dict) else {}
+                    t_id = last_trace.get("trace_id")
                     if t_id:
                         t_res = await tool_map["get_trace"].ainvoke(
                             {"session_id": session_id, "trace_id": t_id}
@@ -342,18 +355,38 @@ async def aquery_trace_tool(
                         data = _parse_mcp_block_result(t_res)
                         target_trace = t_id
                         raw_res = t_res
+                elif isinstance(st_data, dict):
+                    t_id = st_data.get("trace_id")
+                    if t_id:
+                        target_trace = t_id
+                        data = st_data
 
-            summary = f"Trace query '{target_trace}' for {entity_id}: trace details retrieved"
+            if not data or data == [] or data == {} or not target_trace:
+                summary = f"Trace query '{target_trace}' for {entity_id}: no trace details found"
+                relevance_score = 0.0
+            else:
+                summary = f"Trace query '{target_trace}' for {entity_id}: trace details retrieved"
+                relevance_score = 1.0
+
+            duration_ms = 2540.0
+            if isinstance(data, dict):
+                req = data.get("request", {})
+                if isinstance(req, dict):
+                    root_span = req.get("root_span", {})
+                    if isinstance(root_span, dict):
+                        duration_ms = float(root_span.get("duration", 2540.0))
+
             ev = Evidence(
                 id=f"ev-trace-{uuid.uuid4().hex[:6]}",
                 source="trace",
                 entity_id=entity_id,
                 timestamp=datetime.now(UTC).isoformat(),
                 summary=summary,
+                relevance_score=relevance_score,
                 details={
                     "trace_id": target_trace,
-                    "duration_ms": 2540.0,
-                    "data": data,
+                    "duration_ms": duration_ms,
+                    "data": data if data else [],
                     "raw": raw_res,
                 },
             )
