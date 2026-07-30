@@ -2,6 +2,8 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI
 
+from simulator.clock import SimulationClock
+from simulator.event_bus import EventBus
 from simulator.projections.alert import AlertmanagerProjection
 from simulator.projections.log import LogProjection
 from simulator.projections.metric import MetricProjection
@@ -92,3 +94,16 @@ def create_app(
         return {"status": "cleared", "session_id": session_id}
 
     return app
+
+
+# 默认全局共享单例 Projection 与 ASGI 应用实例，供 uvicorn 直接加载 simulator.state_server:app
+default_bus = EventBus()
+default_clock = SimulationClock(start_time=datetime.now(UTC))
+
+default_metric_proj = MetricProjection(default_bus, default_clock)
+default_log_proj = LogProjection(default_bus, default_clock)
+default_trace_proj = TraceProjection(default_bus, default_clock)
+default_alert_proj = AlertmanagerProjection(default_bus, default_clock)
+
+
+app = create_app(default_metric_proj, default_log_proj, default_trace_proj, default_alert_proj)

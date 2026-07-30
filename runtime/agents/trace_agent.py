@@ -16,8 +16,9 @@ from runtime.tools.mcp_tools import query_trace_tool
 def trace_node(state: BlackboardState) -> dict[str, Any]:
     entities = get_target_entities(state)
     alert = state.get("incident_alert", {})
-    trace_id = alert.get("trace_id", "tr-88902")
+    trace_id = alert.get("trace_id", "")
     session_id = alert.get("session_id", "demo_session")
+
     evidences = []
     messages = []
     for target in entities:

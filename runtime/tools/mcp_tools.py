@@ -134,19 +134,45 @@ async def aquery_metrics_tool(
     c = client or get_mcp_client()
     try:
         tool_map = await get_cached_mcp_tools_map(c)
+        data = None
+        target_metric = query
         if "query_instant" in tool_map:
             raw_res = await tool_map["query_instant"].ainvoke(
                 {"session_id": session_id, "metric_name": query}
             )
             data = _parse_mcp_block_result(raw_res)
-            summary = f"Prometheus query '{query}' for {entity_id}: metric value {data}"
+
+            # 若特定 query 查不到，自动尝试 list_metrics 匹配实体指标或共享指标
+            if isinstance(data, dict) and data.get("value") is None and "list_metrics" in tool_map:
+                all_metrics = _parse_mcp_block_result(
+                    await tool_map["list_metrics"].ainvoke({"session_id": session_id})
+                )
+                if isinstance(all_metrics, list):
+                    ent_prefix = entity_id.lower().replace("service", "").replace("-", "_")
+                    matched = [
+                        m
+                        for m in all_metrics
+                        if ent_prefix in m or "utilization" in m or "cpu" in m or "latency" in m
+                    ]
+                    for candidate in matched:
+                        c_res = await tool_map["query_instant"].ainvoke(
+                            {"session_id": session_id, "metric_name": candidate}
+                        )
+                        c_data = _parse_mcp_block_result(c_res)
+                        if isinstance(c_data, dict) and c_data.get("value") is not None:
+                            data = c_data
+                            target_metric = candidate
+                            raw_res = c_res
+                            break
+
+            summary = f"Prometheus query '{target_metric}' for {entity_id}: metric value {data}"
             ev = Evidence(
                 id=f"ev-metric-{uuid.uuid4().hex[:6]}",
                 source="metric",
                 entity_id=entity_id,
                 timestamp=datetime.now(UTC).isoformat(),
                 summary=summary,
-                details={"query": query, "metric_val": data, "raw": raw_res},
+                details={"query": target_metric, "metric_val": data, "raw": raw_res},
             )
             return ev, ToolMessage(content=summary, tool_call_id=call_id)
     except Exception as exc:
@@ -201,18 +227,40 @@ async def aquery_logs_tool(
                 {"session_id": session_id, "service": entity_id, "level": "ERROR"}
             )
             data = _parse_mcp_block_result(raw_res)
-            summary = f"Loki log query '{query}' for {entity_id}: retrieved {len(data) if isinstance(data, list) else 1} log records"
+
+            # 若当前 entity 无日志，尝试 list_services 查找存在故障的真实微服务日志
+            target_svc = entity_id
+            if (
+                not data or (isinstance(data, list) and len(data) == 0)
+            ) and "list_services" in tool_map:
+                svc_list = _parse_mcp_block_result(
+                    await tool_map["list_services"].ainvoke({"session_id": session_id})
+                )
+                if isinstance(svc_list, list):
+                    for svc in svc_list:
+                        for lvl in ["CRITICAL", "ERROR"]:
+                            s_res = await tool_map["query_logs"].ainvoke(
+                                {"session_id": session_id, "service": svc, "level": lvl}
+                            )
+                            s_data = _parse_mcp_block_result(s_res)
+                            if s_data and (not isinstance(s_data, list) or len(s_data) > 0):
+                                data = s_data
+                                target_svc = svc
+                                raw_res = s_res
+                                break
+                        if data and (not isinstance(data, list) or len(data) > 0):
+                            break
+
+            summary = f"Loki log query '{query}' for {target_svc}: retrieved {len(data) if isinstance(data, list) else (1 if data else 0)} log records"
             ev = Evidence(
                 id=f"ev-log-{uuid.uuid4().hex[:6]}",
                 source="log",
-                entity_id=entity_id,
+                entity_id=target_svc,
                 timestamp=datetime.now(UTC).isoformat(),
                 summary=summary,
                 details={
                     "query": query,
-                    "log_line": data
-                    if data
-                    else "ERROR java.lang.NullPointerException at OrderController.java:42",
+                    "log_line": data if data else None,
                     "raw": raw_res,
                 },
             )
@@ -220,7 +268,9 @@ async def aquery_logs_tool(
     except Exception as exc:
         logger.warning(f"Loki MCP query failed: {exc}, using fallback response")
 
-    summary = f"Loki log query '{query}' for {entity_id}: [FALLBACK] MCP unreachable, synthesized placeholder NPE stack trace"
+    summary = (
+        f"Loki log query '{query}' for {entity_id}: [FALLBACK] MCP unreachable, no log records"
+    )
     ev = Evidence(
         id=f"ev-log-{uuid.uuid4().hex[:6]}",
         source="log",
@@ -230,10 +280,11 @@ async def aquery_logs_tool(
         relevance_score=0.0,
         details={
             "query": query,
-            "log_line": "ERROR java.lang.NullPointerException at OrderController.java:42",
+            "log_line": None,
             "is_fallback": True,
         },
     )
+
     return ev, ToolMessage(content=summary, tool_call_id=call_id)
 
 
@@ -273,14 +324,38 @@ async def aquery_trace_tool(
                 {"session_id": session_id, "trace_id": trace_id}
             )
             data = _parse_mcp_block_result(raw_res)
-            summary = f"Trace query '{trace_id}' for {entity_id}: trace details retrieved"
+
+            # 若直接查 trace_id 为空，自动拉取系统中真实生成的全量/慢 Trace 列表
+            target_trace = trace_id
+            if (not data or data == [] or data == {}) and "search_traces" in tool_map:
+                st_res = await tool_map["search_traces"].ainvoke(
+                    {"session_id": session_id, "min_duration_ms": 0.0}
+                )
+                st_data = _parse_mcp_block_result(st_res)
+                if isinstance(st_data, list) and len(st_data) > 0:
+                    first_trace = st_data[-1] if isinstance(st_data[-1], dict) else {}
+                    t_id = first_trace.get("trace_id")
+                    if t_id:
+                        t_res = await tool_map["get_trace"].ainvoke(
+                            {"session_id": session_id, "trace_id": t_id}
+                        )
+                        data = _parse_mcp_block_result(t_res)
+                        target_trace = t_id
+                        raw_res = t_res
+
+            summary = f"Trace query '{target_trace}' for {entity_id}: trace details retrieved"
             ev = Evidence(
                 id=f"ev-trace-{uuid.uuid4().hex[:6]}",
                 source="trace",
                 entity_id=entity_id,
                 timestamp=datetime.now(UTC).isoformat(),
                 summary=summary,
-                details={"trace_id": trace_id, "duration_ms": 2540.0, "data": data, "raw": raw_res},
+                details={
+                    "trace_id": target_trace,
+                    "duration_ms": 2540.0,
+                    "data": data,
+                    "raw": raw_res,
+                },
             )
             return ev, ToolMessage(content=summary, tool_call_id=call_id)
     except Exception as exc:

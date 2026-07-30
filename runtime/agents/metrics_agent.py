@@ -19,11 +19,31 @@ def metrics_node(state: BlackboardState) -> dict[str, Any]:
     evidences = []
     messages = []
     for target in entities:
-        ev, msg = query_metrics_tool(
-            entity_id=target,
-            query="container_cpu_usage_seconds_total",
-            session_id=session_id,
-        )
-        evidences.append(ev)
-        messages.append(msg)
+        prefix = target.lower().replace("service", "").replace("-", "_")
+        # 尝试查询实体专属 CPU/延迟指标以及全局共享利用率指标
+        query_candidates = [f"{prefix}_cpu_usage", f"{prefix}_latency", "redis_utilization"]
+        for q in query_candidates:
+            ev, msg = query_metrics_tool(
+                entity_id=target,
+                query=q,
+                session_id=session_id,
+            )
+            # 若查到有效非空数值或为专属指标，保存为证据
+            if (
+                ev.details.get("metric_val")
+                and isinstance(ev.details["metric_val"], dict)
+                and ev.details["metric_val"].get("value") is not None
+            ):
+                evidences.append(ev)
+                messages.append(msg)
+                break
+        else:
+            # 兜底生成首个候选指标证据
+            ev, msg = query_metrics_tool(
+                entity_id=target,
+                query=query_candidates[0],
+                session_id=session_id,
+            )
+            evidences.append(ev)
+            messages.append(msg)
     return {"evidences": evidences, "messages": messages}

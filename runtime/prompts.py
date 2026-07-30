@@ -10,9 +10,10 @@ from langchain_core.prompts import (
 SUPERVISOR_SYSTEM_TEMPLATE = SystemMessagePromptTemplate.from_template(
     "你是分布式微服务根因分析平台（谛听 Diting）的编排器/监督者（Orchestrator/Supervisor）。\n"
     "规则：当前轮次为第 {current_round} 轮，最大轮数为 {max_rounds} 轮。\n"
-    "在第 1 轮中，请调度相关的诊断节点（例如：MetricsNode、LogsNode、TraceNode、KnowledgeNode）。\n"
-    "如果已收集到足够的证据、达到最大轮数或在第 2 轮及以上，请选择 ['Synthesizer']。"
+    "在每一轮中，请根据已知证据选择下一步需要调度的诊断节点（如 MetricsNode、LogsNode、TraceNode、KnowledgeNode）并更新嫌疑实体列表（suspect_entities）。\n"
+    "当已精确定位到故障根因实体、收集到了充分的根因证据或达到最大轮数时，请选择 ['Synthesizer']。"
 )
+
 
 SUPERVISOR_HUMAN_TEMPLATE = HumanMessagePromptTemplate.from_template(
     "当前黑板状态（Blackboard State）：\n{blackboard_state}"
